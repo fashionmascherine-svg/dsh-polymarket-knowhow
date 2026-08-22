@@ -3,7 +3,7 @@
 
 # Bridge
 
-Polymarket uses **USDC.e** (Bridged USDC) on Polygon as collateral. The Bridge API handles deposits from and withdrawals to multiple chains.
+Polymarket's collateral is moving from **USDC.e** (Bridged USDC) to **pUSD** — api-endpoints.md and SKILL.md carry the current state; treat USDC.e mentions below as legacy-flow documentation. The Bridge API handles deposits from and withdrawals to multiple chains.
 
 Base URL: `https://bridge.polymarket.com`
 

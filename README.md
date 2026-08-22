@@ -132,8 +132,8 @@ Load via the `skill` tool (name: `polymarket`) or directly with `polymarket_know
 
 - Every REST surface was cross-checked against the official OpenAPI specs fetched from docs.polymarket.com.
 - Endpoints were then exercised **live** (read paths) — which caught real drift: camelCase sort fields (`volume_24hr` → 422), flat batch payloads (`params` wrapper returns `[]`), `/live-volume?id=` (not `?event=`), geoblock living on `polymarket.com/api/geoblock`, and moved exchange contract addresses.
-- `tests/unit` (20 tests): HMAC golden vectors, retry/error mapping over a local server, tool execution over stubbed fetch.
-- `tests/live` (10 tests): production smoke tests against Gamma/CLOB/Data-API.
+- `tests/unit` (28 tests): hardcoded HMAC golden vectors, retry/Retry-After/error mapping over a local server, tool execution over stubbed fetch incl. cancel happy paths and failure propagation.
+- `tests/live` (11 tests): production smoke tests against Gamma/CLOB/Data-API/Perps.
 
 ```sh
 npm test        # unit suite (builds first)

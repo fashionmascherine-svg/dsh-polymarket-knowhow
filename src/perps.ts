@@ -18,6 +18,9 @@ export interface PerpsCredentials {
 /** Options accepted by the authenticated request helper. */
 type RequestBodyOptions = Omit<RequestOptions, 'headers'> & { headers?: Record<string, string> }
 
+/** Interval enum accepted by /v1/info/klines and /v1/info/mark-history (live-verified). */
+export type PerpsInterval = '1s' | '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '6h' | '12h' | '1d' | '1w'
+
 export class PerpsClient {
   constructor(
     private readonly baseUrl: string,
@@ -68,57 +71,69 @@ export class PerpsClient {
   serverTime(): Promise<unknown> { return this.info('/v1/info/time') }
   exchangeInfo(): Promise<unknown> { return this.info('/v1/info/exchange') }
   collateralAssets(): Promise<unknown> { return this.info('/v1/info/assets') }
-  instruments(params: { instrument?: string } = {}): Promise<unknown> {
-    return this.info('/v1/info/instruments', { instrument: params.instrument })
+  /**
+   * Numeric perps instrument identifier (see `instruments()`), e.g. `1` for
+   * SP500-USD. Live-verified: the API rejects symbolic ids on /v1/info/*.
+   */
+  instruments(params: { instrument_id?: number } = {}): Promise<unknown> {
+    return this.info('/v1/info/instruments', { instrument_id: params.instrument_id })
   }
-  tickers(params: { instrument?: string } = {}): Promise<unknown> {
-    return this.info('/v1/info/tickers', { instrument: params.instrument })
+  tickers(params: { instrument_id?: number } = {}): Promise<unknown> {
+    return this.info('/v1/info/tickers', { instrument_id: params.instrument_id })
   }
-  bestBidOffer(params: { instrument: string }): Promise<unknown> {
-    return this.info('/v1/info/bbo', { instrument: params.instrument })
+  bestBidOffer(params: { instrument_id: number }): Promise<unknown> {
+    return this.info('/v1/info/bbo', { instrument_id: params.instrument_id })
   }
-  book(params: { instrument: string; depth?: number }): Promise<unknown> {
-    return this.info('/v1/info/book', { instrument: params.instrument, depth: params.depth })
+  book(params: { instrument_id: number; depth?: number }): Promise<unknown> {
+    return this.info('/v1/info/book', { instrument_id: params.instrument_id, depth: params.depth })
   }
-  klines(params: { instrument: string; interval: string; start_timestamp?: number; end_timestamp?: number }): Promise<unknown> {
+  /** Kline `interval` enum (live-verified): 1s|1m|5m|15m|30m|1h|4h|6h|12h|1d|1w. Timestamps are epoch milliseconds. */
+  klines(params: { instrument_id: number; interval: PerpsInterval; start_timestamp: number; end_timestamp?: number }): Promise<unknown> {
     return this.info('/v1/info/klines', {
-      instrument: params.instrument,
+      instrument_id: params.instrument_id,
       interval: params.interval,
       start_timestamp: params.start_timestamp,
       end_timestamp: params.end_timestamp,
     })
   }
-  markPriceHistory(params: { instrument: string; start_timestamp?: number; end_timestamp?: number }): Promise<unknown> {
+  markPriceHistory(params: { instrument_id: number; interval: PerpsInterval; start_timestamp: number; end_timestamp?: number }): Promise<unknown> {
     return this.info('/v1/info/mark-history', {
-      instrument: params.instrument,
+      instrument_id: params.instrument_id,
+      interval: params.interval,
       start_timestamp: params.start_timestamp,
       end_timestamp: params.end_timestamp,
     })
   }
-  index(): Promise<unknown> { return this.info('/v1/info/index') }
-  recentTrades(params: { instrument: string }): Promise<unknown> {
-    return this.info('/v1/info/trades', { instrument: params.instrument })
+  index(params: { asset: string }): Promise<unknown> {
+    return this.info('/v1/info/index', { asset: params.asset })
+  }
+  recentTrades(params: { instrument_id: number; start_timestamp?: number; end_timestamp?: number }): Promise<unknown> {
+    return this.info('/v1/info/trades', {
+      instrument_id: params.instrument_id,
+      start_timestamp: params.start_timestamp,
+      end_timestamp: params.end_timestamp,
+    })
   }
   publicPortfolio(address: string): Promise<unknown> {
     return this.info('/v1/info/portfolio', { address })
   }
-  fundingHistory(params: { instrument: string; start_timestamp?: number; end_timestamp?: number }): Promise<unknown> {
+  fundingHistory(params: { instrument_id: number; start_timestamp?: number; end_timestamp?: number }): Promise<unknown> {
     return this.info('/v1/info/funding', {
-      instrument: params.instrument,
+      instrument_id: params.instrument_id,
       start_timestamp: params.start_timestamp,
       end_timestamp: params.end_timestamp,
     })
   }
   fees(): Promise<unknown> { return this.info('/v1/info/fees') }
-  statistics(): Promise<unknown> { return this.info('/v1/info/statistics') }
+  statistics(params: { instrument_id?: number } = {}): Promise<unknown> {
+    return this.info('/v1/info/statistics', { instrument_id: params.instrument_id })
+  }
 
   // ── Account (/v1/account/*, authed) ────────────────────────────────────
 
   balances(): Promise<unknown> { return this.authed('/v1/account/balances') }
   accountPortfolio(): Promise<unknown> { return this.authed('/v1/account/portfolio') }
-  fills(params: { instrument?: string } = {}): Promise<unknown> {
-    return this.authed('/v1/account/fills', { query: { instrument: params.instrument } })
-  }
+  fills(): Promise<unknown> { return this.authed('/v1/account/fills') }
   openOrders(): Promise<unknown> { return this.authed('/v1/account/open-orders') }
   ordersHistory(): Promise<unknown> { return this.authed('/v1/account/orders') }
   pnl(): Promise<unknown> { return this.authed('/v1/account/pnl') }

@@ -26,15 +26,15 @@ The whole `/v1/info/*` group is public — no headers needed.
 ### Public (`GET /v1/info/*`)
 - `/ping` connection test · `/time` server time · `/exchange` exchange info
 - `/assets` collateral assets · `/instruments` tradable instruments
-- `/tickers` · `/bbo?instrument=` best bid/offer · `/book?instrument=&depth=`
-- `/klines?instrument=&interval=<1m|15m|1h|…>` candles · `/mark-history` mark price history
-- `/index` index prices · `/trades?instrument=` recent trades
+- `/tickers` · `/bbo?instrument_id=` best bid/offer · `/book?instrument_id=&depth=`
+- `/klines?instrument_id=&interval=<1s|1m|5m|15m|30m|1h|4h|6h|12h|1d|1w>&start_timestamp=<ms>[&end_timestamp=<ms>]` candles · `/mark-history?instrument_id=&interval=&start_timestamp=<ms>` (same interval enum; timestamps are epoch **milliseconds**)
+- `/index` index prices · `/trades?instrument_id=` recent trades
 - `/portfolio?address=` public portfolio of any wallet · `/position-fills`
-- `/funding?instrument=` funding history · `/fees` fee schedule · `/limit-tiers` · `/statistics`
+- `/funding?instrument_id=` funding history · `/fees` fee schedule · `/limit-tiers` · `/statistics`
 
 ### Account (`/v1/account/*`, authed)
 - `/balances` balances · `/portfolio` positions overview · `/pnl` profit series · `/stats`
-- `/fills[?instrument=]` execution fills · `/open-orders` · `/orders` order history
+- `/fills` execution fills (no instrument filter in spec) · `/open-orders[?instrument_id=]` · `/orders[?instrument_id=]` order history
 - `/funding` funding payments · `/deposits` / `/withdrawals` records
 - `/limits` account limits · `/rewards` rewards · `/notifications` (+ `/notifications/read` POST)
 - `/auto-cancel` GET auto-cancel settings · `/config`, `/credentials`, `/equity?interval&start_timestamp`

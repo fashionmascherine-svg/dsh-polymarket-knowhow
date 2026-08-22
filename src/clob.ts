@@ -12,7 +12,7 @@
  * opt-in `polymarket_place_order` tool.
  */
 import { createHmac } from 'node:crypto'
-import { requestJson, jsonBody, type HttpConfig, type RequestOptions } from './http.js'
+import { requestJson, jsonBody, PolymarketHttpError, type HttpConfig, type RequestOptions } from './http.js'
 
 export interface L2Credentials {
   apiKey: string
@@ -39,7 +39,7 @@ export interface OrderBook {
 
 export interface PriceHistoryPoint { t: number; p: number }
 
-export const PRICE_HISTORY_INTERVALS = ['1h', '6h', '1d', '1w', '1m', 'max'] as const
+export const PRICE_HISTORY_INTERVALS = ['all', '1h', '6h', '1d', '1w', '1m', 'max'] as const
 export type PriceHistoryInterval = typeof PRICE_HISTORY_INTERVALS[number]
 
 /** Build the five L2 authentication headers for one request. */
@@ -145,12 +145,13 @@ export class ClobClient {
   }
 
   async getPrice(tokenId: string, side: 'BUY' | 'SELL'): Promise<{ price: string }> {
-    return this.public('/price', { query: { token_id: tokenId, side: side.toLowerCase() } })
+    // Spec enum is BUY|SELL; production accepts both cases (live-verified) — send the spec form.
+    return this.public('/price', { query: { token_id: tokenId, side: side.toUpperCase() } })
   }
 
   /** Live-verified flat payload; response maps token id -> {BUY|SELL: price}. */
   async getPrices(requests: Array<{ tokenId: string; side: 'BUY' | 'SELL' }>): Promise<Record<string, { BUY?: string; SELL?: string }>> {
-    const { body, headers } = jsonBody(requests.map((r) => ({ token_id: r.tokenId, side: r.side.toLowerCase() })))
+    const { body, headers } = jsonBody(requests.map((r) => ({ token_id: r.tokenId, side: r.side.toUpperCase() })))
     return this.public('/prices', { method: 'POST', body, headers })
   }
 
@@ -291,9 +292,9 @@ export class ClobClient {
     return this.l2('/cancel-all', { method: 'DELETE' })
   }
 
-  /** Cancel all open orders for a market (optionally only one asset). */
-  async cancelMarketOrders(marketConditionId: string, assetId?: string): Promise<unknown> {
-    const { body, headers } = jsonBody(assetId === undefined ? { market: marketConditionId } : { market: marketConditionId, asset_id: assetId })
+  /** Cancel all open orders for one (market, asset) pair. Both fields are required by the API. */
+  async cancelMarketOrders(marketConditionId: string, assetId: string): Promise<unknown> {
+    const { body, headers } = jsonBody({ market: marketConditionId, asset_id: assetId })
     return this.l2('/cancel-market-orders', { method: 'DELETE', body, headers })
   }
 
@@ -303,7 +304,16 @@ export class ClobClient {
    */
   async sendHeartbeat(heartbeatId: string): Promise<{ heartbeat_id: string; [key: string]: unknown }> {
     const { body, headers } = jsonBody({ heartbeat_id: heartbeatId })
-    return this.l2('/heartbeats', { method: 'POST', body, headers })
+    try {
+      // Current spec declares POST /v1/heartbeats with a HeartbeatRequest body.
+      return await this.l2('/v1/heartbeats', { method: 'POST', body, headers })
+    } catch (error) {
+      // Legacy deployments expose the bodyless-era /heartbeats route instead.
+      if (error instanceof PolymarketHttpError && (error.status === 404 || error.status === 405)) {
+        return this.l2('/heartbeats', { method: 'POST', body, headers }) as Promise<{ heartbeat_id: string; [key: string]: unknown }>
+      }
+      throw error
+    }
   }
 
   /** Collateral/conditional balance and allowance for the funder address. */
@@ -324,6 +334,6 @@ export class ClobClient {
   }
 
   async getNotifications(): Promise<unknown> {
-    return this.l2('/notifications')
+    return this.l2('/notifications', { query: { signature_type: this.credentials?.signatureType } })
   }
 }

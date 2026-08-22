@@ -28,6 +28,49 @@ test('retries transient 5xx and succeeds', async () => {
   } finally { server.close() }
 })
 
+test('honours a numeric Retry-After hint before retrying', async () => {
+  let hits = 0
+  const gaps = []
+  let last = Date.now()
+  const server = await startServer((req, res) => {
+    hits += 1
+    gaps.push(Date.now() - last)
+    last = Date.now()
+    if (hits === 1) { res.writeHead(429, { 'retry-after': '1' }); res.end('slow down') } else { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"ok":true}') }
+  })
+  try {
+    const port = server.address().port
+    const result = await requestJson(`http://127.0.0.1:${port}/x`, {}, HTTP_CONFIG)
+    assert.deepEqual(result, { ok: true })
+    assert.equal(hits, 2)
+    // The wait before the second attempt must respect the 1s hint (default
+    // backoff would fire after ~500ms or less).
+    assert.ok(gaps[1] >= 900, `second attempt waited ${gaps[1]}ms for Retry-After: 1`)
+  } finally { server.close() }
+})
+
+test('exhausted retries surface the last status as PolymarketHttpError', async () => {
+  let hits = 0
+  const server = await startServer((req, res) => {
+    hits += 1
+    res.writeHead(503)
+    res.end('still down')
+  })
+  try {
+    const port = server.address().port
+    await assert.rejects(
+      () => requestJson(`http://127.0.0.1:${port}/x`, {}, HTTP_CONFIG),
+      (error) => {
+        assert.ok(error instanceof PolymarketHttpError, 'is PolymarketHttpError')
+        assert.equal(error.status, 503)
+        return true
+      },
+    )
+    // initial attempt + maxRetries retries
+    assert.equal(hits, HTTP_CONFIG.maxRetries + 1)
+  } finally { server.close() }
+})
+
 test('non-2xx maps to PolymarketHttpError with API detail', async () => {
   const server = await startServer((req, res) => {
     res.writeHead(422, { 'content-type': 'application/json' })

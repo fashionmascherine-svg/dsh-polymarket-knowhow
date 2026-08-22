@@ -61,7 +61,7 @@ export class RelayerClient {
 
   /** Whether a wallet (Safe/proxy) is deployed on Polygon. */
   isDeployed(address: string): Promise<unknown> {
-    return this.request('/deployed', { user: address.toLowerCase() })
+    return this.request('/deployed', { address: address.toLowerCase() })
   }
 }
 

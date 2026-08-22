@@ -64,8 +64,7 @@ export class DataApiClient {
   async positions(params: {
     user: string
     market?: string | string[]
-    sizeThresholdMin?: number
-    sizeThresholdMax?: number
+    sizeThreshold?: number
     redeemable?: boolean
     mergeable?: boolean
     limit?: number
@@ -77,8 +76,7 @@ export class DataApiClient {
       query: {
         user: params.user.toLowerCase(),
         market: params.market,
-        sizeThresholdMin: params.sizeThresholdMin,
-        sizeThresholdMax: params.sizeThresholdMax,
+        sizeThreshold: params.sizeThreshold,
         redeemable: params.redeemable,
         mergeable: params.mergeable,
         limit: params.limit,
@@ -141,7 +139,7 @@ export class DataApiClient {
         start: params.start,
         end: params.end,
         side: params.side,
-        condition_id: params.conditionId,
+        market: params.conditionId,
       },
     })
   }
@@ -155,9 +153,13 @@ export class DataApiClient {
     return markets.length === 1 ? results[0] : results
   }
 
-  /** Trader leaderboard rankings (`window`: all|month|week|day). */
-  async leaderboard(params: { window?: 'all' | 'month' | 'week' | 'day'; limit?: number } = {}): Promise<unknown> {
-    return this.request('/v1/leaderboard', { query: { window: params.window ?? 'all', limit: params.limit } })
+  /**
+   * Trader leaderboard rankings. The official spec param is `timePeriod`
+   * (DAY|WEEK|MONTH|ALL); production also tolerates the legacy `window`
+   * spelling (live-verified both return 200 on /v1/leaderboard).
+   */
+  async leaderboard(params: { timePeriod?: 'DAY' | 'WEEK' | 'MONTH' | 'ALL'; limit?: number } = {}): Promise<unknown> {
+    return this.request('/v1/leaderboard', { query: { timePeriod: (params.timePeriod ?? 'ALL').toUpperCase(), limit: params.limit } })
   }
 
   /** Open interest; pass either `global: true`, a market (condition id), slug, or event id. */

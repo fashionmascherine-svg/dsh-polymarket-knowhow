@@ -364,7 +364,7 @@ export function registerTools(ctx: Context, service: PolymarketService, config: 
         redeemable: args.redeemable,
         sortBy: args.sort_by as 'CURRENT' | 'CASH' | 'TIME' | 'CASHPNL' | 'PERCENTPNL' | undefined,
         sortDirection: args.sort_direction as 'ASC' | 'DESC' | undefined,
-        sizeThresholdMin: args.size_threshold_min,
+        sizeThreshold: args.size_threshold_min,
         limit: args.limit,
         offset: args.offset,
       })
@@ -440,7 +440,7 @@ export function registerTools(ctx: Context, service: PolymarketService, config: 
     },
     output: jsonOutput,
     async execute(args): Promise<any> { // canonical value is runtime-validated against the output schema
-      return await service.dataApi.leaderboard({ window: args.window as 'all' | 'month' | 'week' | 'day' | undefined, limit: args.limit })
+      return await service.dataApi.leaderboard({ timePeriod: args.window as 'DAY' | 'WEEK' | 'MONTH' | 'ALL' | undefined, limit: args.limit })
     },
   }))
 
@@ -532,11 +532,18 @@ export function registerTools(ctx: Context, service: PolymarketService, config: 
 
   // ── Opt-in: account & trading ───────────────────────────────────────────
 
-  if (config.trading.enabled === true) {
+  // Trading tools require BOTH the explicit opt-in AND fully resolved L2
+  // credentials — registering them without credentials would only surface
+  // runtime failures to the model (documented contract in README/CLAUDE.md).
+  if (config.trading.enabled === true && service.tradingCredentials !== undefined) {
     registerTradingTools(ctx, service)
+  } else if (config.trading.enabled === true) {
+    ctx.logger?.warn?.('polymarket-tools: trading.enabled but L2 credentials incomplete; account/trading tools not registered')
   }
-  if (config.perps.enabled === true) {
+  if (config.perps.enabled === true && service.perpsCredentials !== undefined) {
     registerPerpsTools(ctx, service)
+  } else if (config.perps.enabled === true) {
+    ctx.logger?.warn?.('polymarket-tools: perps.enabled but proxy/secret credentials incomplete; perps tools not registered')
   }
 }
 
@@ -593,7 +600,7 @@ function registerTradingTools(ctx: Context, service: PolymarketService): void {
         case 'all':
           return { canceled: await service.clob.cancelAllOrders() }
         case 'market':
-          if (args.market_condition_id === undefined) throw new Error('market mode requires market_condition_id')
+          if (args.market_condition_id === undefined || args.asset_id === undefined) throw new Error('market mode requires both market_condition_id and asset_id')
           return { canceled: await service.clob.cancelMarketOrders(args.market_condition_id, args.asset_id) }
       }
     },
@@ -694,9 +701,12 @@ function registerPerpsTools(ctx: Context, service: PolymarketService): void {
     description: 'Polymarket Perps (perpetual futures) public market data: instruments, tickers, best-bid-offer, book, klines, recent trades, funding history, index, statistics, fees.',
     parameters: {
       endpoint: enumParam(['ping', 'time', 'exchange', 'assets', 'instruments', 'tickers', 'bbo', 'book', 'klines', 'trades', 'mark-history', 'funding', 'index', 'statistics', 'fees', 'portfolio'], 'Info endpoint', true),
-      instrument: str('Instrument symbol (required for bbo/book/klines/trades/mark-history/funding)'),
-      interval: str('klines interval (e.g. 1m, 15m, 1h)'),
+      instrument_id: num('Numeric instrument id from `instruments` (required for bbo/book/klines/trades/mark-history/funding; live-verified: symbolic ids are rejected)'),
+      interval: str('klines/mark-history interval: 1s|1m|5m|15m|30m|1h|4h|6h|12h|1d|1w'),
+      start_timestamp: num('epoch milliseconds (required for klines/mark-history)'),
+      end_timestamp: num('epoch milliseconds'),
       depth: num('book depth levels'),
+      asset: str('index: base asset symbol (e.g. SP500)'),
       address: str('portfolio: public wallet address'),
     },
     output: jsonOutput,
@@ -707,28 +717,30 @@ function registerPerpsTools(ctx: Context, service: PolymarketService): void {
         case 'time': return { time: await p.serverTime() }
         case 'exchange': return { exchange: await p.exchangeInfo() }
         case 'assets': return { assets: await p.collateralAssets() }
-        case 'instruments': return { instruments: await p.instruments({ instrument: args.instrument }) }
-        case 'tickers': return { tickers: await p.tickers({ instrument: args.instrument }) }
+        case 'instruments': return { instruments: await p.instruments() }
+        case 'tickers': return { tickers: await p.tickers(args.instrument_id !== undefined ? { instrument_id: args.instrument_id } : {}) }
         case 'bbo':
-          if (args.instrument === undefined) throw new Error('bbo requires instrument')
-          return { bbo: await p.bestBidOffer({ instrument: args.instrument }) }
+          if (args.instrument_id === undefined) throw new Error('bbo requires instrument_id')
+          return { bbo: await p.bestBidOffer({ instrument_id: args.instrument_id }) }
         case 'book':
-          if (args.instrument === undefined) throw new Error('book requires instrument')
-          return { book: await p.book({ instrument: args.instrument, depth: args.depth }) }
+          if (args.instrument_id === undefined) throw new Error('book requires instrument_id')
+          return { book: await p.book({ instrument_id: args.instrument_id, depth: args.depth }) }
         case 'klines':
-          if (args.instrument === undefined || args.interval === undefined) throw new Error('klines requires instrument and interval')
-          return { klines: await p.klines({ instrument: args.instrument, interval: args.interval }) }
+          if (args.instrument_id === undefined || args.interval === undefined || args.start_timestamp === undefined) throw new Error('klines requires instrument_id, interval and start_timestamp')
+          return { klines: await p.klines({ instrument_id: args.instrument_id, interval: args.interval as any, start_timestamp: args.start_timestamp, end_timestamp: args.end_timestamp }) }
         case 'trades':
-          if (args.instrument === undefined) throw new Error('trades requires instrument')
-          return { trades: await p.recentTrades({ instrument: args.instrument }) }
+          if (args.instrument_id === undefined) throw new Error('trades requires instrument_id')
+          return { trades: await p.recentTrades({ instrument_id: args.instrument_id, start_timestamp: args.start_timestamp, end_timestamp: args.end_timestamp }) }
         case 'mark-history':
-          if (args.instrument === undefined) throw new Error('mark-history requires instrument')
-          return { mark_history: await p.markPriceHistory({ instrument: args.instrument }) }
+          if (args.instrument_id === undefined || args.interval === undefined || args.start_timestamp === undefined) throw new Error('mark-history requires instrument_id, interval and start_timestamp')
+          return { mark_history: await p.markPriceHistory({ instrument_id: args.instrument_id, interval: args.interval as any, start_timestamp: args.start_timestamp, end_timestamp: args.end_timestamp }) }
         case 'funding':
-          if (args.instrument === undefined) throw new Error('funding requires instrument')
-          return { funding: await p.fundingHistory({ instrument: args.instrument }) }
-        case 'index': return { index: await p.index() }
-        case 'statistics': return { statistics: await p.statistics() }
+          if (args.instrument_id === undefined) throw new Error('funding requires instrument_id')
+          return { funding: await p.fundingHistory({ instrument_id: args.instrument_id, start_timestamp: args.start_timestamp, end_timestamp: args.end_timestamp }) }
+        case 'index':
+          if (args.asset === undefined) throw new Error('index requires asset')
+          return { index: await p.index({ asset: args.asset }) }
+        case 'statistics': return { statistics: await p.statistics(args.instrument_id !== undefined ? { instrument_id: args.instrument_id } : {}) }
         case 'fees': return { fees: await p.fees() }
         case 'portfolio':
           if (args.address === undefined) throw new Error('portfolio requires address')
@@ -742,7 +754,6 @@ function registerPerpsTools(ctx: Context, service: PolymarketService): void {
     description: 'Polymarket Perps authenticated account view (read-only): balances, portfolio, fills, open orders, order history, PnL, funding payments, deposits, withdrawals, limits, rewards, stats.',
     parameters: {
       endpoint: enumParam(['balances', 'portfolio', 'fills', 'open-orders', 'orders', 'pnl', 'funding', 'deposits', 'withdrawals', 'limits', 'rewards', 'stats'], 'Account endpoint', true),
-      instrument: str('fills: restrict to one instrument'),
     },
     output: jsonOutput,
     async execute(args): Promise<any> { // canonical value is runtime-validated against the output schema
@@ -750,7 +761,7 @@ function registerPerpsTools(ctx: Context, service: PolymarketService): void {
       switch (args.endpoint) {
         case 'balances': return { balances: await p.balances() }
         case 'portfolio': return { portfolio: await p.accountPortfolio() }
-        case 'fills': return { fills: await p.fills({ instrument: args.instrument }) }
+        case 'fills': return { fills: await p.fills() }
         case 'open-orders': return { open_orders: await p.openOrders() }
         case 'orders': return { orders: await p.ordersHistory() }
         case 'pnl': return { pnl: await p.pnl() }

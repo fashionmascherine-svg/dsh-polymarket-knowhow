@@ -36,12 +36,12 @@ Core reads:
 
 ## Data API
 
-- `GET /positions?user=` — `market[]`, `sizeThresholdMin/Max`, `redeemable`, `mergeable`, `sortBy=CURRENT|CASH|TIME|CASHPNL|PERCENTPNL`, `sortDirection=ASC|DESC`, `limit` ≤500, `offset`
+- `GET /positions?user=` — `market[]`, `sizeThreshold` (single value, spec), `redeemable`, `mergeable`, `sortBy=CURRENT|CASH|TIME|CASHPNL|PERCENTPNL`, `sortDirection=ASC|DESC`, `limit` ≤500, `offset`
 - `GET /closed-positions?user=` — resolved positions with PnL
 - `GET /trades?user=&market=` — `takerOnly`, `filterType=CASH|TOKENS`, `filterAmount`, `side`, `limit` ≤500
-- `GET /activity?user=` — on-chain feed; `type[]` = TRADE|SPLIT|MERGE|REDEEM|CONVERSION|REWARD, `start`, `end`, `side`, `condition_id`
+- `GET /activity?user=` — on-chain feed; `type[]` = TRADE|SPLIT|MERGE|REDEEM|CONVERSION|REWARD, `start`, `end`, `side`, `market=<condition id>` (spec param name)
 - `GET /holders?market=<full condition id>` — top holders per token (requires the full 32-byte id)
-- `GET /v1/leaderboard?window=all|month|week|day&limit=` — rank/proxyWallet/vol/pnl
+- `GET /v1/leaderboard?timePeriod=DAY|WEEK|MONTH|ALL&limit=` — rank/proxyWallet/vol/pnl (legacy `window=` also tolerated live; both spellings verified 200)
 - `GET /oi` — open interest: `global=true` OR `market=` OR `slug=` OR `event=`
 - `GET /live-volume?id=<eventId>` — live in-game volume (**param is `id`, not `event`**)
 - `GET /value?user=` — total USD value of positions
@@ -57,7 +57,7 @@ Core reads:
 
 Public market data:
 - `GET /book?token_id=` · `POST /books` body `[{"token_id":"…"}]` — FLAT array, ≤500 entries (live-verified; a `[{params:[…]}]` wrapper silently returns `[]`) · also `GET /books?token_ids=`
-- `GET /price?token_id=&side=buy|sell` · `POST /prices` body flat `[{"token_id":"…","side":"buy"}]` → map of token → `{BUY: price}`
+- `GET /price?token_id=&side=BUY|SELL` · `POST /prices` body flat `[{"token_id":"…","side":"SELL"}]` → map of token → `{BUY: price}` (spec enum uppercase; production accepts both cases — live-verified)
 - `GET /midpoint` · `GET /midpoints` · `POST /midpoints`; `GET /spread` · `POST /spreads`
 - `GET /last-trade-price?token_id=` · `GET/POST /last-trades-prices`
 - `GET /prices-history?market=<token>&interval=max|all|1m|1w|1d|6h|1h&fidelity=<minutes>` or `startTs`/`endTs` unix seconds (mutually exclusive with interval)
@@ -83,7 +83,7 @@ Authenticated (L2 headers):
 ## Bridge / Relayer
 
 - Bridge: `GET /supported-assets`, `POST /deposit` (create deposit addresses), `POST /quote`, `GET /status/{address}`, `POST /withdraw`
-- Relayer: `GET /deployed?user=`, `GET /nonce`, `GET /relay-payload`, `POST /submit` (builder headers), `GET /transaction?id=`, `GET /transactions?user=`, `GET /relayer/api/keys` (headers `RELAYER_API_KEY` + `RELAYER_API_KEY_ADDRESS`)
+- Relayer: `GET /deployed?address=` (spec param; the legacy `user=` spelling is superseded), `GET /nonce`, `GET /relay-payload`, `POST /submit` (builder headers), `GET /transaction?id=`, `GET /transactions?user=`, `GET /relayer/api/keys` (headers `RELAYER_API_KEY` + `RELAYER_API_KEY_ADDRESS`)
 
 ## Contracts (Polygon mainnet — verify at docs.polymarket.com/resources/contracts)
 

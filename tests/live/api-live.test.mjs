@@ -7,6 +7,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
+const perpsOnline = await fetch('https://api.perpetuals.polymarket.com/v1/info/ping', { signal: AbortSignal.timeout(8000) })
+  .then((r) => r.ok).catch(() => false)
+
 const online = await fetch('https://gamma-api.polymarket.com/status', { signal: AbortSignal.timeout(8000) })
   .then((r) => r.ok).catch(() => false)
 const options = { skip: online ? false : 'Polymarket APIs unreachable' }
@@ -84,7 +87,7 @@ test('data-api: trades and leaderboard', options, async () => {
   const trades = await dataApi.trades({ limit: 3 })
   assert.ok(Array.isArray(trades) && trades.length > 0)
   assert.ok(trades[0].proxyWallet !== undefined)
-  const leaderboard = await dataApi.leaderboard({ window: 'all', limit: 3 })
+  const leaderboard = await dataApi.leaderboard({ timePeriod: 'ALL', limit: 3 })
   assert.ok(Array.isArray(leaderboard) && leaderboard.length > 0)
   assert.ok(leaderboard[0].proxyWallet !== undefined)
 })
@@ -103,4 +106,22 @@ test('geoblock check responds', options, async () => {
   const status = await checkGeoblock('https://polymarket.com/api/geoblock', HTTP)
   assert.equal(typeof status.blocked, 'boolean')
   assert.ok(typeof status.country === 'string')
+})
+
+test('perps: public info endpoints accept numeric instrument_id', { skip: perpsOnline ? false : 'Perps API unreachable' }, async () => {
+  const { PerpsClient } = await import('../../lib/perps.js')
+  const perps = new PerpsClient('https://api.perpetuals.polymarket.com', {
+    timeoutMs: 15_000, maxRetries: 1, userAgent: 'dsh-polymarket-knowhow-live',
+  })
+  const instruments = await perps.instruments()
+  assert.ok(Array.isArray(instruments) && instruments.length > 0, 'instruments listed')
+  const instrumentId = Number(instruments[0].instrument_id)
+  assert.ok(Number.isFinite(instrumentId), 'instrument_id is numeric')
+  // Live regression for the audit finding: the parameter name is
+  // instrument_id (numeric); symbolic ids are rejected on /v1/info/*.
+  const bbo = await perps.bestBidOffer({ instrument_id: instrumentId })
+  assert.ok(bbo !== undefined)
+  const now = Date.now()
+  const klines = await perps.klines({ instrument_id: instrumentId, interval: '1h', start_timestamp: now - 3_600_000 })
+  assert.equal(klines?.status === undefined || klines?.data !== undefined, true, 'klines accepted interval enum + ms timestamps')
 })

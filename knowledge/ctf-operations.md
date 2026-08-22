@@ -11,10 +11,10 @@ Every binary market has two tokens:
 
 | Token | Redeems for | Condition |
 |-------|-------------|-----------|
-| **Yes** | $1.00 USDC.e | Event occurs |
-| **No** | $1.00 USDC.e | Event does not occur |
+| **Yes** | $1.00 collateral (USDC.e historically, pUSD on the new exchange) | Event occurs |
+| **No** | $1.00 collateral (as above) | Event does not occur |
 
-Every Yes/No pair is backed by exactly $1.00 USDC.e locked in the CTF contract.
+Every Yes/No pair is backed by exactly $1.00 of collateral locked in the CTF contract.
 
 ## Split
 

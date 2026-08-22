@@ -25,7 +25,7 @@ GET https://gamma-api.polymarket.com/events?tag_id=100381&limit=10&active=true&c
 GET https://gamma-api.polymarket.com/events?series_id=10345&active=true&closed=false
 
 # Sorted by volume
-GET https://gamma-api.polymarket.com/events?active=true&closed=false&order=volume_24hr&ascending=false&limit=100
+GET https://gamma-api.polymarket.com/events?active=true&closed=false&order=volume24hr&ascending=false&limit=100
 ```
 
 ### Markets Endpoint

@@ -18,8 +18,25 @@ const CREDS = {
 }
 const TIMESTAMP = '1700000000'
 
+// GOLDEN VECTORS — hardcoded, independently verified with Python hmac/hashlib
+// and OpenSSL CLI (`echo -n <msg> | openssl dgst -sha256 -hmac <key> -binary |
+// base64`). They pin the documented algorithm (key = base64decode(secret),
+// message = timestamp+METHOD+path[+body], digest base64) against accidental
+// shared-misconception drift between test and product code.
+const GOLDEN = {
+  '1700000000GET/data/orders?market=0xabc': 'ngii3LyDQCQ5wTDS/y3mD23WLB7qvdGvp3fi5uskMDk=',
+  '1700000000DELETE/order{\"orderID\":\"0xdeadbeef\"}': 'Hc5zLsuOihZzlfZYXPBOImEAP7ed0rH2BM/iVWKRmMc=',
+  '1700000000GET/balance-allowance': 'V351jLhrVE8SvMjz1ONzKACsMDEM4I0kVDunou5c1XU=',
+}
+
 function expectedSignature(message) {
-  return createHmac('sha256', Buffer.from(CREDS.secret, 'base64')).update(message).digest('base64')
+  const golden = GOLDEN[message]
+  if (golden === undefined) throw new Error(`no hardcoded golden vector for message: ${message}`)
+  // Belt and braces: the vector must ALSO match an inline recomputation so a
+  // typo in the table fails loudly instead of silently passing the wrong way.
+  const recomputed = createHmac('sha256', Buffer.from(CREDS.secret, 'base64')).update(message).digest('base64')
+  assert.equal(recomputed, golden)
+  return golden
 }
 
 test('GET without body signs timestamp+method+path-with-query', () => {

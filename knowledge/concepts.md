@@ -51,7 +51,7 @@ Outstanding limit orders are **auto-cancelled** when a game begins. However, if 
 
 ## Positions & Tokens
 
-Trading creates **ERC1155 conditional tokens** backed by USDC.e collateral:
+Trading creates **ERC1155 conditional tokens** backed by collateral (USDC.e historically; the exchange now lists **pUSD** — see api-endpoints.md):
 - Every Yes/No pair is backed by exactly **$1 of USDC.e**
 - Yes at $0.60 + No at $0.40 = $1.00 (always)
 - Winning tokens redeem for $1.00, losing tokens become $0.00

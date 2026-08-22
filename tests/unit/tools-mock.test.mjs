@@ -62,6 +62,15 @@ function makeService(overrides = {}) {
 
 async function collectTools(serviceOverrides = {}) {
   const service = makeService(serviceOverrides)
+  // Simulate fully resolved credentials so the registration gates (opt-in AND
+  // creds present) can be exercised in both directions.
+  if (serviceOverrides?.withCreds === true) {
+    Object.defineProperty(service, 'tradingCredentials', { value: { apiKey: 'k', secret: Buffer.from('s').toString('base64'), passphrase: 'p', address: '0xabc', signatureType: 2 } })
+    Object.defineProperty(service, 'perpsCredentials', { value: { proxy: '0xproxy', secret: 'sec' } })
+    // The ClobClient snapshots credentials at construction; mirror them so
+    // l2-signed tool calls can run against the stubbed fetch.
+    Object.defineProperty(service.clob, 'credentials', { value: { apiKey: 'k', secret: Buffer.from('s').toString('base64'), passphrase: 'p', address: '0xabc', signatureType: 2 } })
+  }
   const registered = new Map()
   const fakeCtx = {
     tools: { register: (definition) => { registered.set(definition.name, definition) } },
@@ -69,7 +78,7 @@ async function collectTools(serviceOverrides = {}) {
     logger: { warn() {}, info() {} },
   }
   const config = {
-    trading: { ...service.tradingCredentials, enabled: serviceOverrides?.trading?.enabled === true },
+    trading: { enabled: serviceOverrides?.trading?.enabled === true },
     perps: { enabled: serviceOverrides?.perps?.enabled === true },
   }
   registerTools(fakeCtx, service, config)
@@ -92,6 +101,7 @@ test('registers the core read-only tools and no account tools when trading disab
   ]) {
     assert.ok(tools.has(expected), `missing tool ${expected}`)
   }
+  assert.equal(tools.size, 22, 'exactly the 22 core tools when trading/perps off')
   assert.ok(!tools.has('polymarket_place_order'))
   assert.ok(!tools.has('polymarket_cancel_orders'))
 })
@@ -134,15 +144,15 @@ test('orderbook batch posts wrapped params', async () => {
   assert.equal(result.books[0].asset_id, 'T1')
 })
 
-test('price batch posts sides lowercased', async () => {
+test('price batch posts spec-uppercase sides', async () => {
   const tools = await collectTools()
   routes.length = 0
   routes.push((url, init) => (url.includes('/prices') && init.method === 'POST' ? { body: { ok: 1 } } : undefined))
   await tools.get('polymarket_price').execute({ token_ids: ['A', 'B'], side: 'SELL' }, EXEC)
   const sent = JSON.parse(calls.at(-1).body)
   assert.deepEqual(sent, [
-    { token_id: 'A', side: 'sell' },
-    { token_id: 'B', side: 'sell' },
+    { token_id: 'A', side: 'SELL' },
+    { token_id: 'B', side: 'SELL' },
   ])
 })
 
@@ -176,10 +186,32 @@ test('live_volume uses id param', async () => {
   assert.equal(result.total, 5)
 })
 
+test('trading tools register only when enabled AND credentials resolve', async () => {
+  // enabled but NO resolved credentials → not registered (documented gate)
+  const noCreds = await collectTools({ trading: { enabled: true } })
+  assert.ok(!noCreds.has('polymarket_place_order'), 'no trading tools without creds')
+  assert.equal(noCreds.size, 22)
+  // enabled AND creds → the full 22 + 7 set
+  const tools = await collectTools({ trading: { enabled: true }, withCreds: true })
+  assert.ok(tools.has('polymarket_place_order'), 'trading tools registered when enabled+creds')
+  for (const t of ['polymarket_account_orders', 'polymarket_account_trades', 'polymarket_cancel_orders', 'polymarket_balance_allowance', 'polymarket_heartbeat', 'polymarket_api_keys']) {
+    assert.ok(tools.has(t), `missing ${t}`)
+  }
+  assert.equal(tools.size, 29, '22 core + 7 trading when perps off')
+})
+
+test('perps tools register only when enabled AND proxy/secret resolve', async () => {
+  const off = await collectTools({})
+  assert.ok(!off.has('polymarket_perps_market_data'))
+  const on = await collectTools({ perps: { enabled: true }, withCreds: true })
+  for (const t of ['polymarket_perps_market_data', 'polymarket_perps_account']) {
+    assert.ok(on.has(t), `missing ${t}`)
+  }
+})
+
 test('cancel_orders validates required args per mode', async () => {
-  const config = { enabled: true, apiKey: 'k', secret: Buffer.from('s').toString('base64'), passphrase: 'p', address: '0xabc', signatureType: 2, allowEnvCredentials: false }
-  const tools = await collectTools({ trading: config })
-  assert.ok(tools.has('polymarket_place_order'), 'trading tools registered when enabled')
+  const config = { enabled: true }
+  const tools = await collectTools({ trading: config, withCreds: true })
   await assert.rejects(
     () => tools.get('polymarket_cancel_orders').execute({ mode: 'single' }, EXEC),
     /requires order_id/,
@@ -187,6 +219,45 @@ test('cancel_orders validates required args per mode', async () => {
   await assert.rejects(
     () => tools.get('polymarket_cancel_orders').execute({ mode: 'batch', order_ids: [] }, EXEC),
     /requires order_ids/,
+  )
+})
+
+test('cancel_orders happy paths hit the right wire endpoints per mode', async () => {
+  const tools = await collectTools({ trading: { enabled: true }, withCreds: true })
+  routes.length = 0
+  calls.length = 0
+  routes.push((url, init) => (init.method === 'DELETE' ? { body: { canceled: true } } : undefined))
+
+  await tools.get('polymarket_cancel_orders').execute({ mode: 'single', order_id: '0x1' }, EXEC)
+  let last = calls.at(-1)
+  assert.ok(last.url.includes('/order'), `single -> /order (${last.url})`)
+  assert.deepEqual(JSON.parse(last.body), { orderID: '0x1' })
+
+  await tools.get('polymarket_cancel_orders').execute({ mode: 'batch', order_ids: ['a', 'b'] }, EXEC)
+  last = calls.at(-1)
+  assert.ok(last.url.includes('/orders'))
+  assert.deepEqual(JSON.parse(last.body), ['a', 'b'], 'batch body is a FLAT id array')
+
+  await tools.get('polymarket_cancel_orders').execute({ mode: 'all' }, EXEC)
+  last = calls.at(-1)
+  assert.ok(last.url.includes('/cancel-all'))
+
+  await tools.get('polymarket_cancel_orders').execute({ mode: 'market', market_condition_id: '0xmkt', asset_id: '0xasset' }, EXEC)
+  last = calls.at(-1)
+  assert.ok(last.url.includes('/cancel-market-orders'))
+  assert.deepEqual(JSON.parse(last.body), { market: '0xmkt', asset_id: '0xasset' })
+
+  assert.equal(routes.filter(Boolean).length >= 1, true)
+})
+
+test('tool failure path surfaces a clean error to the runner', async () => {
+  const tools = await collectTools()
+  routes.length = 0
+  calls.length = 0
+  // No route matches → stubbed fetch returns 404 → PolymarketHttpError.
+  await assert.rejects(
+    () => tools.get('polymarket_event_get').execute({ event_id: '404-test' }, EXEC),
+    (error) => /Polymarket API request failed|404/.test(String(error?.message)),
   )
 })
 

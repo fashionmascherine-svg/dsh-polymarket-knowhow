@@ -1,6 +1,6 @@
 {
   "name": "dsh-polymarket-knowhow",
-  "description": "DeepSeek Harness plugin: complete Polymarket API coverage — market data tools, authenticated trading tools, WebSocket stream service, and an embedded Polymarket knowhow skill",
+  "description": "DeepSeek Harness plugin: complete Polymarket API coverage \u2014 market data tools, authenticated trading tools, WebSocket stream service, and an embedded Polymarket knowhow skill",
   "version": "0.1.0",
   "type": "module",
   "license": "MIT",
@@ -51,7 +51,8 @@
     "lib/types/**/*.d.ts",
     "knowledge/**/*.md",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -66,10 +67,10 @@
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1 || workspace:^",
-    "@deepseek-ai/dsh-skill": "^0.0.1-rc.1 || workspace:^",
-    "@deepseek-ai/dsh-tools": "^0.0.1-rc.1 || workspace:^",
-    "@deepseek-ai/schemastery": "^3.18.1 || workspace:^"
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-skill": ">=0.0.1-rc.1 <1",
+    "@deepseek-ai/dsh-tools": ">=0.0.1-rc.1 <1",
+    "@deepseek-ai/schemastery": "^3.18.1"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
