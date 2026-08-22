@@ -19,3 +19,4 @@ polymarket-skill/
 # Editor/OS noise
 .DS_Store
 *.log
+*.tgz
