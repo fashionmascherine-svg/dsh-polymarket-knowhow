@@ -89,6 +89,9 @@ function parseUrl(baseUrl: string, path: string, query?: RequestOptions['query']
   return { url: new URL(normalizedBase + fullPath), pathWithQuery: fullPath }
 }
 
+/** TTL for rarely-changing per-token facts (tick size, neg-risk flag). */
+const STATIC_TTL_MS = 5 * 60_000
+
 export class ClobClient {
   constructor(
     private readonly baseUrl: string,
@@ -182,12 +185,25 @@ export class ClobClient {
     return this.public('/last-trade-price', { query: { token_id: tokenId } })
   }
 
-  async getTickSize(tokenId: string): Promise<{ minimum_tick_size: number | string }> {
-    return this.public('/tick-size', { query: { token_id: tokenId } })
+  private readonly staticCache = new Map<string, { value: unknown; expires: number }>()
+
+  /** Memoize a rarely-changing per-token fact for STATIC_TTL_MS. */
+  private async cached<T>(key: string, load: () => Promise<T>): Promise<T> {
+    const hit = this.staticCache.get(key)
+    if (hit !== undefined && hit.expires > Date.now()) return hit.value as T
+    const value = await load()
+    this.staticCache.set(key, { value, expires: Date.now() + STATIC_TTL_MS })
+    return value
   }
 
+  /** Tick size is fixed per market once listed — safe to memoize briefly. */
+  async getTickSize(tokenId: string): Promise<{ minimum_tick_size: number | string }> {
+    return this.cached(`tick:${tokenId}`, () => this.public('/tick-size', { query: { token_id: tokenId } }))
+  }
+
+  /** Neg-risk flag is a market-level constant — safe to memoize briefly. */
   async getNegRisk(tokenId: string): Promise<{ neg_risk: boolean }> {
-    return this.public('/neg-risk', { query: { token_id: tokenId } })
+    return this.cached(`negrisk:${tokenId}`, () => this.public('/neg-risk', { query: { token_id: tokenId } }))
   }
 
   /**

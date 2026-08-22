@@ -43,9 +43,9 @@ test('honours a numeric Retry-After hint before retrying', async () => {
     const result = await requestJson(`http://127.0.0.1:${port}/x`, {}, HTTP_CONFIG)
     assert.deepEqual(result, { ok: true })
     assert.equal(hits, 2)
-    // The wait before the second attempt must respect the 1s hint (default
-    // backoff would fire after ~500ms or less).
-    assert.ok(gaps[1] >= 900, `second attempt waited ${gaps[1]}ms for Retry-After: 1`)
+    // Wait must respect the 1s hint minus worst-case jitter (x0.75 floor);
+    // default exponential backoff alone would fire well under 700ms.
+    assert.ok(gaps[1] >= 700, `second attempt waited ${gaps[1]}ms for Retry-After: 1`)
   } finally { server.close() }
 })
 
@@ -68,6 +68,26 @@ test('exhausted retries surface the last status as PolymarketHttpError', async (
     )
     // initial attempt + maxRetries retries
     assert.equal(hits, HTTP_CONFIG.maxRetries + 1)
+  } finally { server.close() }
+})
+
+test('honours an HTTP-date Retry-After hint', async () => {
+  let hits = 0
+  const gaps = []
+  let last = Date.now()
+  const server = await startServer((req, res) => {
+    hits += 1
+    gaps.push(Date.now() - last); last = Date.now()
+    // toUTCString has second granularity: an "now+3s" date carries an
+    // effective hint of 2–3s; x0.75 jitter floor keeps the wait above 1400ms,
+    // clearly separating it from the ~1s default backoff.
+    if (hits === 1) { res.writeHead(429, { 'retry-after': new Date(Date.now() + 3000).toUTCString() }); res.end('slow') } else { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"ok":1}') }
+  })
+  try {
+    const port = server.address().port
+    const result = await requestJson(`http://127.0.0.1:${port}/x`, {}, HTTP_CONFIG)
+    assert.deepEqual(result, { ok: 1 })
+    assert.ok(gaps[1] >= 1400, `waited ${gaps[1]}ms for date-form Retry-After`)
   } finally { server.close() }
 })
 

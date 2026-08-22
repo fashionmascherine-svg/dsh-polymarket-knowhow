@@ -123,7 +123,10 @@ export async function requestJson<T>(
     if (options.signal?.aborted) throw options.signal.reason instanceof Error ? options.signal.reason : new Error('aborted')
     if (attempt > 0) {
       const retryAfter = lastError instanceof RetryAfterHint ? lastError.delayMs : undefined
-      const backoff = retryAfter ?? Math.min(1000 * 2 ** (attempt - 1), 8000)
+      // Exponential backoff with full-ish jitter (±25%) so many concurrent
+      // agents never retry in lockstep against a recovering API.
+      const base = Math.min(1000 * 2 ** (attempt - 1), 8000)
+      const backoff = Math.round((retryAfter ?? base) * (0.75 + Math.random() * 0.5))
       await sleep(backoff, options.signal)
     }
     try {
@@ -158,9 +161,7 @@ export async function requestJson<T>(
       }
       const error = new PolymarketHttpError(response.status, method, fullUrl, text)
       if (RETRYABLE_STATUS.has(response.status) && attempt < config.maxRetries) {
-        const retryAfterHeader = response.headers.get('retry-after')
-        const retryAfterMs = retryAfterHeader === null ? undefined : Number(retryAfterHeader) * 1000
-        lastError = new RetryAfterHint(Number.isFinite(retryAfterMs) ? retryAfterMs : undefined, error)
+        lastError = new RetryAfterHint(parseRetryAfterMs(response.headers.get('retry-after')), error)
         continue
       }
       throw error
@@ -175,6 +176,15 @@ export async function requestJson<T>(
     }
   }
   throw lastError instanceof Error ? lastError : new Error('unreachable')
+}
+
+/** Numeric seconds or an HTTP-date; anything else falls back to default backoff. */
+function parseRetryAfterMs(header: string | null): number | undefined {
+  if (header === null) return undefined
+  const seconds = Number(header)
+  if (Number.isFinite(seconds)) return Math.max(seconds, 0) * 1000
+  const date = Date.parse(header)
+  return Number.isNaN(date) ? undefined : Math.max(date - Date.now(), 0)
 }
 
 class RetryAfterHint extends Error {

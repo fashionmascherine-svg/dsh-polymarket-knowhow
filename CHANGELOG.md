@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows semver.
 
+## [0.1.1] — hardening & optimization
+
+### Changed
+- HTTP retry backoff now uses ±25% jitter (no lockstep retries across agents) and honours HTTP-date `Retry-After` values in addition to numeric seconds.
+- Stream reconnect uses capped exponential backoff with jitter instead of a fixed delay; resets on successful open.
+- CLOB `tick-size` and `neg-risk` responses are memoized per token for 5 minutes (they are market constants) — fewer redundant calls when inspecting many markets.
+- Flaky retry tests reworked around the new jitter floor; suite is now 30 unit + 11 live tests.
+
 ## [0.1.0] — initial release
 
 ### Added

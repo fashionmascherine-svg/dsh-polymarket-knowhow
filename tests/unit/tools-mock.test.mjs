@@ -250,6 +250,24 @@ test('cancel_orders happy paths hit the right wire endpoints per mode', async ()
   assert.equal(routes.filter(Boolean).length >= 1, true)
 })
 
+test('tick-size and neg-risk are memoized per token', async () => {
+  const tools = await collectTools()
+  routes.length = 0
+  calls.length = 0
+  let hits = 0
+  routes.push((url) => {
+    if (url.includes('/tick-size')) { hits += 1; return { body: { minimum_tick_size: '0.01' } } }
+    if (url.includes('/neg-risk')) return { body: { neg_risk: false } }
+    return undefined
+  })
+  await tools.get('polymarket_token_info').execute({ token_id: 'T1' }, EXEC)
+  await tools.get('polymarket_token_info').execute({ token_id: 'T1' }, EXEC)
+  const t1Hits = hits
+  await tools.get('polymarket_token_info').execute({ token_id: 'T2' }, EXEC)
+  assert.equal(t1Hits, 1, `second T1 call served from cache (got ${t1Hits} fetches)`)
+  assert.ok(hits >= 2, 'different token bypasses the cache')
+})
+
 test('tool failure path surfaces a clean error to the runner', async () => {
   const tools = await collectTools()
   routes.length = 0

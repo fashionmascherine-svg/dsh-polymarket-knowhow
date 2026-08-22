@@ -1,7 +1,7 @@
 {
   "name": "dsh-polymarket-knowhow",
   "description": "DeepSeek Harness plugin: complete Polymarket API coverage \u2014 market data tools, authenticated trading tools, WebSocket stream service, and an embedded Polymarket knowhow skill",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "license": "MIT",
   "author": "dsh-polymarket-knowhow contributors",

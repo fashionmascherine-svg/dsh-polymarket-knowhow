@@ -37,6 +37,7 @@ export function apply(ctx: Context, config: Config): void {
   let socket: WebSocket | undefined
   let pingTimer: NodeJS.Timeout | undefined
   let reconnectTimer: NodeJS.Timeout | undefined
+  let reconnectAttempt = 0
   let disposed = false
 
   function clearTimers(): void {
@@ -54,6 +55,7 @@ export function apply(ctx: Context, config: Config): void {
       return
     }
     socket.onopen = () => {
+      reconnectAttempt = 0
       if (socket?.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: 'market', assets_ids: config.stream.assetIds }))
         pingTimer = setInterval(() => {
@@ -77,7 +79,7 @@ export function apply(ctx: Context, config: Config): void {
           }
         }
       } catch {
-        logger.debug('polymarket-stream: non-JSON frame dropped')
+        logger.debug?.('polymarket-stream: non-JSON frame dropped')
       }
     }
     socket.onclose = () => {
@@ -87,8 +89,12 @@ export function apply(ctx: Context, config: Config): void {
     socket.onerror = () => { /* close handler owns recovery */ }
   }
 
+  /** Reconnect with capped exponential backoff (+jitter); reset on open. */
   function scheduleReconnect(): void {
-    reconnectTimer = setTimeout(() => connect(), Math.max(config.stream.reconnectDelayMs, 250))
+    const base = Math.max(config.stream.reconnectDelayMs, 250)
+    const delay = Math.round(Math.min(base * 2 ** reconnectAttempt, 30_000) * (0.75 + Math.random() * 0.5))
+    reconnectAttempt += 1
+    reconnectTimer = setTimeout(() => connect(), delay)
   }
 
   ctx.effect(() => {
