@@ -1,6 +1,7 @@
 # Perps — Polymarket Perpetual Futures API
 
 > New module (absent from the original skill snapshot): Polymarket launched perpetual futures. This module documents the HTTP surface; specs live at docs.polymarket.com/api-spec/perps-openapi.json and AsyncAPI at asyncapi-perps.json.
+> Part of the dsh-polymarket-knowhow distribution, which adapts atompilot/polymarket-skill (MIT); this module is original to this distribution.
 
 ## Overview
 

@@ -1,6 +1,7 @@
 # Combos & RFQ — Combinatorial Markets API
 
 > New module (absent from the original skill snapshot). Combos are multi-outcome combination markets traded through a request-for-quote (RFQ) mechanism rather than the central limit order book.
+> Part of the dsh-polymarket-knowhow distribution, which adapts atompilot/polymarket-skill (MIT); this module is original to this distribution.
 
 ## Surfaces
 

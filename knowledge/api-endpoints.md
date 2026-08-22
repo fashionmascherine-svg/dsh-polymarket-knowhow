@@ -1,6 +1,7 @@
 # API Endpoints — Complete Verified Inventory
 
 > New module: compiled from the official OpenAPI specs (docs.polymarket.com/api-spec/) and live endpoint verification. Supersedes any partial lists in older modules.
+> Part of the dsh-polymarket-knowhow distribution, which adapts atompilot/polymarket-skill (MIT); this module is original to this distribution.
 
 Polymarket exposes seven REST APIs plus several WebSocket channels. Chain ID is **137** (Polygon PoS).
 
