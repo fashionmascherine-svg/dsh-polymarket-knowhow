@@ -1,0 +1,25 @@
+# The dsh-polymarket-knowhow bundle patch.
+#
+# Applied when a profile lists this bundle via `dsh plugin --profile <name> add
+# github:you/dsh-polymarket-knowhow` (or a local checkout / tarball). Four
+# independent rows so deployments can disable any capability by id in a later
+# layer (e.g. `- id: polymarket-tools\n  disabled: true`).
+#
+# polymarket-service provides `ctx.polymarket`; tools/skills/stream consume it.
+- insert:
+    # Core API client service (Gamma, CLOB, Data API) — ctx.polymarket.
+    - id: polymarket-service
+      name: dsh-polymarket-knowhow/service
+
+    # Model-facing tools for market data and (opt-in) account/trading.
+    - id: polymarket-tools
+      name: dsh-polymarket-knowhow/tools
+      inject: [polymarket, tools]
+
+    # Embedded runtime skill + knowledge modules (ctx.skills).
+    - id: polymarket-skills
+      name: dsh-polymarket-knowhow/skills
+
+    # Optional WebSocket market-channel stream service (off by default).
+    - id: polymarket-stream
+      name: dsh-polymarket-knowhow/stream

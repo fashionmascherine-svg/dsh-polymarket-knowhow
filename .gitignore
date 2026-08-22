@@ -1,0 +1,21 @@
+# Build output
+lib/
+
+# Dependencies
+node_modules/
+pnpm-lock.yaml
+package-lock.json
+
+# Research scratch (not part of the shipped plugin)
+.notes/
+
+# Upstream reference clone used during authoring
+polymarket-skill/
+
+# Environment
+.env
+.env.*
+
+# Editor/OS noise
+.DS_Store
+*.log

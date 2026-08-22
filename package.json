@@ -1,0 +1,85 @@
+{
+  "name": "dsh-polymarket-knowhow",
+  "description": "DeepSeek Harness plugin: complete Polymarket API coverage — market data tools, authenticated trading tools, WebSocket stream service, and an embedded Polymarket knowhow skill",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "author": "dsh-polymarket-knowhow contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/you/dsh-polymarket-knowhow.git"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "polymarket",
+    "prediction-markets",
+    "clob",
+    "gamma-api",
+    "trading",
+    "cordis",
+    "agent-tools"
+  ],
+  "main": "lib/service.js",
+  "types": "lib/types/service.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/service.d.ts",
+      "default": "./lib/service.js"
+    },
+    "./service": {
+      "types": "./lib/types/service.d.ts",
+      "default": "./lib/service.js"
+    },
+    "./tools": {
+      "types": "./lib/types/tools.d.ts",
+      "default": "./lib/tools.js"
+    },
+    "./skills": {
+      "types": "./lib/types/skills.d.ts",
+      "default": "./lib/skills.js"
+    },
+    "./stream": {
+      "types": "./lib/types/stream.d.ts",
+      "default": "./lib/stream.js"
+    },
+    "./knowledge/*": "./knowledge/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/**/*.js",
+    "lib/types/**/*.d.ts",
+    "knowledge/**/*.md",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
+    "test": "npm run build && node --test \"tests/unit/*.test.mjs\"",
+    "test:live": "node --test \"tests/live/*.test.mjs\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1 || workspace:^",
+    "@deepseek-ai/dsh-skill": "^0.0.1-rc.1 || workspace:^",
+    "@deepseek-ai/dsh-tools": "^0.0.1-rc.1 || workspace:^",
+    "@deepseek-ai/schemastery": "^3.18.1 || workspace:^"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-skill": "^0.0.1-rc.1",
+    "@deepseek-ai/dsh-tools": "^0.0.1-rc.1",
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "@types/node": "^22.19.0",
+    "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  }
+}
