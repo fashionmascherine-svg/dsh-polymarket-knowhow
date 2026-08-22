@@ -72,7 +72,8 @@ test('clob: batch books and midpoints return every token', options, async () => 
   const tokens = markets.slice(0, 2).map((m) => JSON.parse(m.clobTokenIds)[0])
   const books = await clob.getBooks(tokens)
   assert.equal(books.length, tokens.length)
-  assert.deepEqual(books.map((b) => b.asset_id), tokens)
+  // Production may reorder responses; assert set-equality of returned ids.
+  assert.deepEqual([...books.map((b) => b.asset_id)].sort(), [...tokens].sort())
   const mids = await clob.getMidpoints(tokens)
   for (const token of tokens) {
     assert.ok(typeof mids[token] === 'string' && mids[token].length > 0, `midpoint for ${token}`)
