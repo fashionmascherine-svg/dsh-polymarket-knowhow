@@ -1,13 +1,13 @@
 {
   "name": "dsh-polymarket-knowhow",
   "description": "DeepSeek Harness plugin: complete Polymarket API coverage \u2014 market data tools, authenticated trading tools, WebSocket stream service, and an embedded Polymarket knowhow skill",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "type": "module",
   "license": "MIT",
   "author": "dsh-polymarket-knowhow contributors",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/you/dsh-polymarket-knowhow.git"
+    "url": "git+https://github.com/fashionmascherine-svg/dsh-polymarket-knowhow.git"
   },
   "keywords": [
     "dsh-plugin",
@@ -59,6 +59,7 @@
     "prepare": "npm run build",
     "test": "npm run build && node --test \"tests/unit/*.test.mjs\"",
     "test:live": "node --test \"tests/live/*.test.mjs\"",
+    "sync:claude-skill": "node scripts/sync-claude-skill.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dsh": {
@@ -68,8 +69,8 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-skill": ">=0.0.1-rc.1 <1",
-    "@deepseek-ai/dsh-tools": ">=0.0.1-rc.1 <1",
+    "@deepseek-ai/dsh-skill": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <1",
+    "@deepseek-ai/dsh-tools": ">=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <1",
     "@deepseek-ai/schemastery": "^3.18.1"
   },
   "devDependencies": {

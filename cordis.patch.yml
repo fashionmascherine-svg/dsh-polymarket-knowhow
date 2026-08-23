@@ -1,7 +1,8 @@
 # The dsh-polymarket-knowhow bundle patch.
 #
 # Applied when a profile lists this bundle via `dsh plugin --profile <name> add
-# github:you/dsh-polymarket-knowhow` (or a local checkout / tarball). Four
+# github:fashionmascherine-svg/dsh-polymarket-knowhow` (or a local checkout /
+# tarball). Four
 # independent rows so deployments can disable any capability by id in a later
 # layer (e.g. `- id: polymarket-tools\n  disabled: true`).
 #
