@@ -1,5 +1,5 @@
-# Build output
-lib/
+# Build output — lib/ is COMMITTED on purpose: the Claude Code plugin and the
+# bundled MCP server must work from a fresh clone without a build step.
 
 # Dependencies
 node_modules/
