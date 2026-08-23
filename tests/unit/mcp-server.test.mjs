@@ -5,6 +5,7 @@
  * The fetch stub is installed BEFORE importing the server module so the whole
  * lib/ client graph resolves against it (same pattern as tools-mock.test.mjs).
  */
+import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
@@ -180,7 +181,8 @@ test('stdio transport speaks newline-delimited JSON-RPC end to end', async () =>
   child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n')
   child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' }) + '\n')
   await done
-  assert.equal(responses.get(1).result.serverInfo.version, '0.2.0')
+  const pkgVersion = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version
+  assert.equal(responses.get(1).result.serverInfo.version, pkgVersion)
   assert.ok(responses.get(2).result.tools.length >= 20)
   child.kill()
 })

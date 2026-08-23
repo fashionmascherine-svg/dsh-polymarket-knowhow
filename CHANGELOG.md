@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows semver.
 
+## [0.2.1] — standalone MCP server
+
+### Fixed
+- The bundled MCP server crashed at startup under Claude Code (`ERR_MODULE_NOT_FOUND: @deepseek-ai/dsh-tools`): it imported the DSH tool layer, whose `@deepseek-ai/*` imports resolve only inside a DeepSeek Harness host. The server now imports the pure-Node client modules directly and re-declares the read-only tool layer inline (mirroring src/tools.ts) — truly zero-dependency, verified by full handshake + live `tools/call` outside any harness.
+- `startStdio` no longer exits on stdin close while responses are still in flight.
+
 ## [0.2.0] — Claude Code plugin
 
 ### Added
