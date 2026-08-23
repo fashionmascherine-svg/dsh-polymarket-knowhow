@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows semver.
 
+## [0.2.0] — Claude Code plugin
+
+### Added
+- The repository now doubles as a **Claude Code plugin**: `.claude-plugin/plugin.json` + bundled single-plugin `marketplace.json` (`/plugin marketplace add fashionmascherine-svg/dsh-polymarket-knowhow`).
+- `skills/polymarket/` — Claude Code skill exposing the knowledge modules as generated references (`scripts/sync-claude-skill.mjs`, `npm run sync:claude-skill`); a unit test keeps them in sync with `knowledge/`.
+- `scripts/mcp-server.mjs` — zero-dependency MCP stdio server exposing the read-only Polymarket tools to Claude Code and any MCP client. Built with trading/perps disabled and a denylist guard; account/order endpoints are unreachable by construction. Wired through the bundled `.mcp.json` (`${CLAUDE_PLUGIN_ROOT}`).
+- Prebuilt `lib/` is now committed so plugin installs work without a build step.
+- 19 new unit tests (MCP JSON-RPC dispatch, schema conversion, read-only exposure guarantee, stdio child-process smoke, packaging contract). Suite is now 49 unit + 11 live tests.
+
+### Changed
+- `repository.url` points at the real GitHub repository; `@deepseek-ai/dsh-*` peer ranges follow the prerelease-branch guidance (`>=0.0.1-rc.1 <0.1.0 || >=0.1.0-rc.1 <1`) so harness rc builds no longer hit `ERESOLVE`.
+
 ## [0.1.1] — hardening & optimization
 
 ### Changed

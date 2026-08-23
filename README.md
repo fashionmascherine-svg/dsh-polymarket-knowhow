@@ -46,13 +46,13 @@ Four independent Cordis rows (disable any of them by id in a later patch layer):
 
 ```sh
 # From GitHub (pin a commit for reproducibility)
-dsh plugin --profile my-profile add github:you/dsh-polymarket-knowhow#<sha>
+dsh plugin --profile my-profile add github:fashionmascherine-svg/dsh-polymarket-knowhow#<sha>
 
 # From a local checkout
 dsh plugin --profile my-profile add ./dsh-polymarket-knowhow
 
 # From a tarball
-pnpm pack && dsh plugin --profile my-profile add ./dsh-polymarket-knowhow-0.1.0.tgz
+pnpm pack && dsh plugin --profile my-profile add ./dsh-polymarket-knowhow-0.2.0.tgz
 ```
 
 The package ships a self-contained `prepare` build. A git install fetches sources, so pnpm ≥10 asks you to allow the build once — copy the package key pnpm prints into your profile's `pnpm-workspace.yaml`:
@@ -63,6 +63,28 @@ allowBuilds:
 ```
 
 Then boot: `dsh --profile my-profile`. All four rows activate; only safe read-only tools are visible unless you enable trading/perps.
+
+## Use in Claude Code
+
+The same repository is also a [Claude Code](https://claude.com/claude-code) plugin. It bundles:
+
+- the **`polymarket` skill** — the 15 knowledge modules under `skills/polymarket/references/` (generated from `knowledge/`, single source of truth);
+- a **read-only MCP server** (`scripts/mcp-server.mjs`) exposing the live market-data tools (search, events, orderbook, prices, quote, price history, positions, trades, leaderboard, open interest, perps market data, …). Trading/account tools are never exposed — the server is built with credentials resolution disabled and a denylist guard on top.
+
+Install from this repo's bundled marketplace:
+
+```
+/plugin marketplace add fashionmascherine-svg/dsh-polymarket-knowhow
+/plugin install polymarket-knowhow@fashionmascherine-svg-polymarket
+```
+
+Or attach just the MCP server to any MCP client:
+
+```sh
+claude mcp add polymarket-knowhow -- node /path/to/dsh-polymarket-knowhow/scripts/mcp-server.mjs
+```
+
+The prebuilt `lib/` is committed, so both paths work out of the box; after touching `src/` run `npm run build` and commit the rebuilt `lib/`. After editing `knowledge/*.md` regenerate the skill copies with `npm run sync:claude-skill`.
 
 ## Configuration
 
