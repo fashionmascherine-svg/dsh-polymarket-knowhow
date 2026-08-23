@@ -1,0 +1,20 @@
+{
+  "name": "fashionmascherine-svg-polymarket",
+  "owner": {
+    "name": "fashionmascherine-svg",
+    "url": "https://github.com/fashionmascherine-svg"
+  },
+  "metadata": {
+    "description": "Polymarket knowhow for Claude Code — skill + read-only market-data MCP server",
+    "version": "0.2.0"
+  },
+  "plugins": [
+    {
+      "name": "polymarket-knowhow",
+      "description": "Polymarket prediction-market knowhow skill plus a read-only MCP server with live Gamma/CLOB/Data-API market data tools",
+      "source": "./",
+      "version": "0.2.0",
+      "category": "web3"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "name": "polymarket-knowhow",
+  "description": "Polymarket toolkit for Claude Code — deep prediction-market API knowhow skill plus a read-only MCP server exposing live Gamma/CLOB/Data-API market data tools (orderbooks, prices, events, positions, leaderboards)",
+  "version": "0.2.0",
+  "author": {
+    "name": "fashionmascherine-svg",
+    "url": "https://github.com/fashionmascherine-svg"
+  },
+  "homepage": "https://github.com/fashionmascherine-svg/dsh-polymarket-knowhow",
+  "repository": "https://github.com/fashionmascherine-svg/dsh-polymarket-knowhow",
+  "license": "MIT",
+  "keywords": [
+    "polymarket",
+    "prediction-markets",
+    "market-data",
+    "mcp"
+  ]
+}
