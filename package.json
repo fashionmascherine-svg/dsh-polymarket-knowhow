@@ -50,6 +50,11 @@
     "lib/**/*.js",
     "lib/types/**/*.d.ts",
     "knowledge/**/*.md",
+    "skills/**/*.md",
+    "scripts/mcp-server.mjs",
+    ".claude-plugin/plugin.json",
+    ".claude-plugin/marketplace.json",
+    ".mcp.json",
     "cordis.patch.yml",
     "README.md",
     "THIRD_PARTY_NOTICES.md"
