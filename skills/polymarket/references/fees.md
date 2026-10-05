@@ -91,14 +91,19 @@ Fee-enabled markets return a non-zero value; fee-free markets return `0`.
 
 ### Using the SDK (automatic)
 
-The official CLOB clients **automatically handle fees** — they fetch the fee rate and include it in the signed order payload. No extra code needed.
+The official SDKs **automatically handle fees** — they read the market's fee schedule and include it in the signed order payload. No extra code needed.
 
 ```bash
-# Ensure latest SDK version
-npm install @polymarket/clob-client@latest    # TypeScript
-pip install --upgrade py-clob-client          # Python
-cargo add polymarket-client-sdk               # Rust
+# Unified SDKs (V1 + V2): fees resolve from market.trading.feeSchedule automatically
+npm install @polymarket/client@latest        # TypeScript
+pip install --upgrade polymarket-client      # Python
+cargo add polymarket_client_sdk_v2@0.7.0 --features clob   # Rust (CLOB only)
+
+# Legacy standalone clients (V1/CTF only, superseded):
+# npm install @polymarket/clob-client / pip install py-clob-client
 ```
+
+V2 fee semantics (ExchangeV3): a BUY's fee adds to its collateral spend; a SELL's fee is deducted from proceeds. FOK/FAK BUY market orders target total spend — include fees in `maxSpend`/`amount` or the SDK pays them on top.
 
 ### Using the REST API (manual)
 

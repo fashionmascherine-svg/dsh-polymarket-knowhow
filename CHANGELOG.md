@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows semver.
 
+## [0.3.0] — Polymarket Protocol V2 & Data API v2
+
+### Breaking
+- **Data API v2 migration** (v1 retires on 2026-10-24): every `DataApiClient` read now hits the `/v2/*` routes. Responses use the v2 envelope `{ data, pagination }` (`data: null` on misses); pagination is cursor-only (`cursor` in, `pagination.next_cursor` out — `offset` is rejected by the API); fields are snake_case (`proxy_wallet`, `token_id` — the v1 `asset` field is renamed); market filtering uses `condition` (≤20 comma-joined ids; v1 `market` param rejected). `holders` requires `condition`; `traded` → `userStats` (`/v2/user-stats`); `closedPositions` → `status=CLOSED`; `marketPositions` → `condition` without `user`; position `sort_by` values are now `current_value|total_pnl|realized_pnl|unrealized_pnl` (v1 values rejected). `/other` and `/revisions` have no v2 counterpart and were removed from the client. All shapes live-verified against production.
+- **Trading path migrated to the unified SDK**: `src/signing.ts` now loads `@polymarket/client` (≥0.12.0) + `viem` instead of the retired `@polymarket/clob-client` + ethers v5. The unified SDK routes V1 CTF token ids *and* Protocol V2 position ids through the same `assetId`, resolves tick size/neg-risk/fee schedule automatically (the `marketMeta` argument is gone), settles V2 orders through ExchangeV3 (EIP-712 domain version "3"), and resumes from stored L2 credentials via `credentials` (mapped to the SDK's `key`-shaped boundary). The SDK declares `engines: node >=24`; the repo's own range (`^22.19.0 || >=24.0.0`, package.json) admits it — run the trading path on Node ≥24 to satisfy both contracts. To enable trading: `dsh plugin --profile <name> add @polymarket/client viem`.
+- `polymarket_positions` tool: `market` param → `condition`, `offset` → `cursor`, new `status` lifecycle filter (`OPEN|REDEEMABLE|REDEEMABLE_LOST|MERGEABLE|CLOSED`); `polymarket_trades_public`/`polymarket_activity`: `offset` → `cursor` (+`condition` filter on activity); `polymarket_holders`/`polymarket_open_interest`: `market` → `condition`. `polymarket_activity` takes exactly ONE `type` per request (production rejects multi-type queries — see Fixed). Same tool names otherwise.
+
+### Added
+- New read-only tools on Data API v2: `polymarket_user_stats` (distinct markets traded + all-time PnL breakdown, replaces `/traded`), `polymarket_resolutions` (resolution status + payout vectors), `polymarket_approvals` (wallet token-approval state). Read-only surface is now 25 DSH tools; the bundled MCP server exposes 26 read-only tools (these 25 plus `polymarket_perps_market_data`). Trading set unchanged.
+- `ClobClient.getBalanceAllowance` accepts `asset_type=CONDITIONAL-V2` (Protocol V2 positions) alongside `COLLATERAL`/`CONDITIONAL`; the `polymarket_balance_allowance` tool exposes it.
+- `polymarket_leaderboard` gained cursor pagination on both surfaces.
+- Knowledge modules document Protocol V2 end to end: V1↔V2 identifier mapping (`version`/`positionIds`/`resolutionStatus` on Gamma), ExchangeV3 + PositionManager + Router + AutoRedeemer + NegRiskModule contract addresses, V2 Router split/merge/redeem semantics (bytes31 conditionId, 6-decimal base units, outcomeIndex 0/1), V2 approval matrix and fill math, unified-SDK client setup, and the **PolyBolt** reference-price WebSocket (`wss://ws-live-v2.polymarket.com/ws`, auth + `price.crypto|price.crypto.twap|price.equity` channels) replacing RTDS. Data API v2 endpoint inventory rewritten (incl. `user-pnl` with its `1d|18h|12h|3h|1h` fidelity enum, `user-volume`, `biggest-winners`, `prices-history`, `resolutions` with the production-observed `posed` status, `status`, the surviving `/v1/accounting/snapshot`, and the retired `/other` + `/revisions`). Perps module gained the 2026-09 changelog deltas (`exchange-stats`, fills `settlement`/`builder_fee`/`total_fee`, terminal statuses).
+
+### Fixed
+- `polymarket_activity` multi-type inputs: production `/v2/activity` accepts exactly one `type` per request (repeated keys → HTTP 400 "duplicate field `type`"; bracket/CSV alternate forms return 200 with the filter silently ignored — live-verified). The client now rejects >1 type with an actionable error and both tool surfaces take a single type.
+- Stored-credential resume: `@polymarket/client` validates `credentials.key`, so the repo's `{apiKey,…}` shape was rejected at client construction; `toSdkCredentials` now maps to the SDK boundary shape (regression-guarded by a unit test).
+- FOK/FAK argument mapping in `placeOrder`: SELL market orders take shares from `size` (documented unit) with `price` forwarded as the worst-price `minPrice`; previously `amount` (dollars) could silently become shares.
+- Windows portability of the test harness (ESM dynamic-import URLs, stdio spawn cwd, CRLF-tolerant SKILL.md frontmatter check); `ClobClient.getTrades` no longer declares a `limit` it never sent.
+
+### Changed
+- Live smoke tests assert the v2 envelopes against production (including a single-type activity probe); unit suite extended to 60 tests and now covers the v2 routes, cursor plumbing, the activity contract, the credential mapping and the FOK/FAK order mapping (SDK stubbed at the module loader).
+
 ## [0.2.1] — standalone MCP server
 
 ### Fixed

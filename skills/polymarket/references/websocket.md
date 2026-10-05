@@ -6,7 +6,7 @@
 
 # WebSocket
 
-Three channels for real-time data. Market and sports channels are public; user channel requires API credentials.
+Four channels for real-time data. Market and sports channels are public; user channel and PolyBolt (reference prices) require API credentials. RTDS (`wss://ws-live-data.polymarket.com`) is legacy — only its `activity` topic remains there; reference prices moved to PolyBolt (below).
 
 ## Channels
 
@@ -15,6 +15,9 @@ Three channels for real-time data. Market and sports channels are public; user c
 | Market | `wss://ws-subscriptions-clob.polymarket.com/ws/market` | No |
 | User | `wss://ws-subscriptions-clob.polymarket.com/ws/user` | Yes |
 | Sports | `wss://sports-api.polymarket.com/ws` | No |
+| PolyBolt (reference prices) | `wss://ws-live-v2.polymarket.com/ws` | Yes (CLOB creds) |
+
+The market channel subscribes by **asset ids** — CTF token ids for V1 markets, Protocol V2 position ids for V2 markets; the user channel keys on condition ids for both systems.
 
 ## Market Channel
 
@@ -151,6 +154,36 @@ No subscription message needed. Connect and receive all active sports data.
 // sport_result
 { "type": "sport_result", ... }  // Live scores, periods, status
 ```
+
+## PolyBolt — Reference Prices
+
+`wss://ws-live-v2.polymarket.com/ws` replaced RTDS for crypto/equity reference prices (crypto markets resolve against Chainlink TWAP). Requires **authentication with CLOB API credentials** before subscribing.
+
+Framing (replaces RTDS's `{"action":"subscribe",…}` + client `PING`):
+
+```json
+// 1. authenticate first
+{ "op": "auth", "apiKey": "…", "secret": "…", "passphrase": "…" }
+// 2. subscribe (filter is a JSON OBJECT, not a string)
+{ "op": "subscribe", "subscriptions": [
+  { "channel": "price.crypto", "filter": { "symbol": "btcusd" } },
+  { "channel": "price.crypto.twap", "filter": { "symbol": "btcusd", "window_seconds": 60 } },
+  { "channel": "price.equity", "filter": { "symbol": "aapl" } }
+] }
+// optional keepalive
+{ "op": "ping" }
+```
+
+Message shape: `{ "v": 1, "channel": "…", "seq": 7, "ts": 1760000000000, "snapshot": true, "payload": { "symbol": "btcusd", "value": "…", "full_accuracy_value": "…", "timestamp": "…", "source": "chainlink" } }` — prefer the decimal string `full_accuracy_value` over the float `value`; **no E18 conversion** (that was legacy RTDS TWAP).
+
+Rules:
+
+- **Symbols are lowercase and end in `usd`** (not `usdt`, no slashes): `btcusd` ok; `BTCUSD`, `btcusdt`, `btc/usd` rejected with `UserInputError`. Equities lowercase tickers (`aapl`).
+- The server pings every 25s (no client `PING` needed); each subscription gets one `snapshot:true` frame on subscribe, then updates with a dense per-channel `seq` (+`dropped` counter). Compare `seq` only within one connection/channel — it resets on reconnect.
+- Limits: 64 subscriptions per connection, 20 subscribe frames/s, 64 KB frames, 8 auth frames. Close codes: `4001` auth, `4002` slow consumer, `4003` draining (one jittered reconnect), `4008` policy breach (a bug — don't retry).
+- `provider` in the filter pins a vendor; Chainlink is the default for crypto.
+- SDK: PolyBolt streams ship in `@polymarket/client` ≥0.11 via `SecureClient.subscribe(...)` (topics `prices.crypto`, `prices.crypto.twap`, `prices.equity`); legacy RTDS price topics were slated for removal one month after 0.11.0.
+- RTDS remnants: the `activity` topic stayed on `wss://ws-live-data.polymarket.com`; the comments stream was retired with no replacement (use REST comment listing).
 
 ## Dynamic Subscribe / Unsubscribe
 

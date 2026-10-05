@@ -50,7 +50,7 @@ tools.ts     registerTools(ctx, service, config) — defineTool() definitions;
              trading tools registered only when trading.enabled AND creds resolve
 skills.ts    ctx.skills.register({ name: 'polymarket', content: knowledge/SKILL.md })
 stream.ts    market-channel WebSocket bridge → ctx.emit('polymarket/market-event')
-signing.ts   OPTIONAL order signing via lazy import of @polymarket/clob-client
+signing.ts   OPTIONAL order signing via lazy import of the unified @polymarket/client SDK
 knowledge/   16 markdown modules; also shipped resources for the skill
 ```
 
@@ -65,8 +65,8 @@ knowledge/   16 markdown modules; also shipped resources for the skill
 2. **Gamma sort fields are camelCase without underscores** (`volume24hr`, `endDate`, …). Underscore forms return HTTP 422. Live-verified.
 3. **L2 signature material** = `timestamp + METHOD + path-with-query [+ JSON body]`, HMAC-SHA256 keyed by the base64-decoded secret, base64 digest. The query string IS part of the signed path. See `buildL2Headers` and its golden-vector tests.
 4. **Geoblock** lives on `https://polymarket.com/api/geoblock` (not data-api) and returns `{blocked, ip, country, region}`. API hosts may also answer 403 with a blocked body — mapped to `PolymarketGeoBlockedError`.
-5. **Contract addresses moved** (2026): CTF Exchange `0xE111180000d2663C0091e4f400237545B87B996B`, NegRisk Exchange `0xe2222d279d744050d28e00520010520000310F59`, pUSD collateral replaces USDC.e listings. Older addresses in legacy docs are superseded.
-6. **Order placement is SDK-gated by design.** We do not hand-roll EIP-712 order signing; `src/signing.ts` lazily imports `@polymarket/clob-client` with a non-literal specifier so absence degrades gracefully at runtime instead of failing install/typecheck.
+5. **Contract addresses moved** (2026): CTF Exchange `0xE111180000d2663C0091e4f400237545B87B996B`, NegRisk Exchange `0xe2222d279d744050d28e00520010520000310F59`, pUSD collateral replaces USDC.e listings; Protocol V2 adds PositionManager/Router/ExchangeV3/AutoRedeemer (see `knowledge/api-endpoints.md`). Older addresses in legacy docs are superseded.
+6. **Order placement is SDK-gated by design.** We do not hand-roll EIP-712 order signing; `src/signing.ts` lazily imports the unified `@polymarket/client` SDK (V1 + Protocol V2 support) with a non-literal specifier so absence degrades gracefully at runtime instead of failing install/typecheck.
 7. **Tool outputs**: canonical values must be lossless JSON; rendering truncates model-facing text at ~24k chars. Keep heavy nested arrays pruned server-side (see `pruneEvent`/`pruneMarket`).
 8. **Every side effect belongs to the plugin fiber** (Cordis effects). Timers/sockets/listeners must be disposed on unload — see `stream.ts` for the pattern.
 

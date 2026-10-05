@@ -50,17 +50,22 @@ const value = {
 ### Create / Derive Credentials
 
 ```typescript
-// TypeScript
-const client = new ClobClient("https://clob.polymarket.com", 137, signer);
-const creds = await client.createOrDeriveApiKey();
-// { apiKey: "uuid", secret: "base64...", passphrase: "string" }
+// TypeScript — unified SDK (recommended)
+import { createSecureClient } from "@polymarket/client";
+import { privateKey } from "@polymarket/client/viem";
+
+const client = await createSecureClient({ signer: privateKey(pk) });
+const creds = client.credentials; // { key, secret, passphrase } — store securely
 ```
 
 ```python
 # Python
-client = ClobClient("https://clob.polymarket.com", key=pk, chain_id=137)
-creds = client.create_or_derive_api_creds()
+from polymarket import AsyncSecureClient
+client = await AsyncSecureClient.create(private_key=pk)
+creds = client.credentials
 ```
+
+**Legacy standalone clients** (`@polymarket/clob-client` / `py-clob-client`, V1/CTF only): `new ClobClient(host, 137, signer).createOrDeriveApiKey()` / `client.create_or_derive_api_creds()`.
 
 **REST endpoints:**
 - `POST {host}/auth/api-key` — create new credentials (requires L1 headers)
@@ -83,28 +88,27 @@ L2 uses HMAC-SHA256 signatures from the API credentials. Required for all `/v1/t
 ### Initialize Trading Client
 
 ```typescript
-// TypeScript
-const client = new ClobClient(
-  "https://clob.polymarket.com",
-  137,
-  signer,
-  apiCreds,       // { apiKey, secret, passphrase }
-  2,              // signatureType
-  funderAddress   // proxy wallet address
-);
+// TypeScript — unified SDK: pass stored creds to avoid re-deriving, and the
+// account wallet (funder) that holds the funds.
+const client = await createSecureClient({
+  wallet: funderAddress,                         // Poly proxy/Safe, Deposit Wallet, or EOA address
+  signer: privateKey(pk),
+  credentials: { key: creds.key, secret: creds.secret, passphrase: creds.passphrase },
+});
+// Omit `credentials` to let the SDK derive fresh ones via L1.
+// client.account → { signer, wallet, walletType: EOA|POLY_PROXY|GNOSIS_SAFE|DEPOSIT_WALLET }
 ```
 
 ```python
-# Python
-client = ClobClient(
-    host="https://clob.polymarket.com",
-    chain_id=137,
-    key=pk,
-    creds=api_creds,
-    signature_type=2,
-    funder=funder_address,
+# Python — omits api_key, so credentials are derived via L1; pass
+# api_key=RelayerApiKey(...) or BuilderApiKey(...) for those key types.
+client = await AsyncSecureClient.create(
+    private_key=pk,
+    wallet=funder_address,
 )
 ```
+
+**Legacy standalone clients** signature: `new ClobClient(host, 137, signer, apiCreds, signatureType, funderAddress)` / `ClobClient(host, key, chain_id, creds, signature_type, funder)`.
 
 ## Signature Types
 
@@ -132,81 +136,58 @@ Builder authentication is separate from L1/L2. Used for order attribution and re
 ### Initialize Client with Builder Config
 
 ```typescript
-// TypeScript — local signing
-import { BuilderConfig, BuilderApiKeyCreds } from "@polymarket/builder-signing-sdk";
+// TypeScript — unified SDK: builder creds are a client option, orders
+// automatically include builder headers. NOTE: builderApiKey lives in the
+// `@polymarket/client/node` subpath, NOT in the package root (a root import
+// throws SyntaxError at module link time on 0.12.0).
+import { createSecureClient } from "@polymarket/client";
+import { builderApiKey } from "@polymarket/client/node";
 
-const builderCreds: BuilderApiKeyCreds = {
-  key: process.env.POLY_BUILDER_API_KEY!,
-  secret: process.env.POLY_BUILDER_SECRET!,
-  passphrase: process.env.POLY_BUILDER_PASSPHRASE!,
-};
-
-const builderConfig = new BuilderConfig({ localBuilderCreds: builderCreds });
-
-const client = new ClobClient(
-  "https://clob.polymarket.com",
-  137,
-  signer,
-  apiCreds,
-  2,
-  funderAddress,
-  undefined,
-  false,
-  builderConfig
-);
-// Orders automatically include builder headers
-```
-
-```python
-# Python — local signing
-from py_builder_signing_sdk import BuilderConfig, BuilderApiKeyCreds
-
-builder_config = BuilderConfig(
-    local_builder_creds=BuilderApiKeyCreds(
-        key=os.environ["POLY_BUILDER_API_KEY"],
-        secret=os.environ["POLY_BUILDER_SECRET"],
-        passphrase=os.environ["POLY_BUILDER_PASSPHRASE"],
-    )
-)
-
-client = ClobClient(
-    host="https://clob.polymarket.com",
-    chain_id=137,
-    key=pk,
-    creds=api_creds,
-    signature_type=2,
-    funder=funder_address,
-    builder_config=builder_config,
-)
-```
-
-### Remote Signing
-
-Keep builder credentials on a separate server. Client points to your signing endpoint:
-
-```typescript
-// TypeScript client
-const builderConfig = new BuilderConfig({
-  remoteBuilderConfig: { url: "https://your-server.com/sign" },
+const client = await createSecureClient({
+  signer: privateKey(pk),
+  apiKey: builderApiKey({
+    key: process.env.POLYMARKET_BUILDER_API_KEY!,
+    secret: process.env.POLYMARKET_BUILDER_SECRET!,
+    passphrase: process.env.POLYMARKET_BUILDER_PASSPHRASE!,
+  }),
 });
 ```
 
 ```python
-# Python client
-from py_builder_signing_sdk import BuilderConfig, RemoteBuilderConfig
+# Python
+from polymarket import AsyncSecureClient, BuilderApiKey
 
-builder_config = BuilderConfig(
-    remote_builder_config=RemoteBuilderConfig(url="https://your-server.com/sign")
+client = await AsyncSecureClient.create(
+    private_key=pk,
+    api_key=BuilderApiKey(
+        key=os.environ["POLYMARKET_BUILDER_API_KEY"],
+        secret=os.environ["POLYMARKET_BUILDER_SECRET"],
+        passphrase=os.environ["POLYMARKET_BUILDER_PASSPHRASE"],
+    ),
 )
 ```
 
-Your server receives `{ method, path, body }` and returns the 4 `POLY_BUILDER_*` headers.
+Legacy standalone path (superseded): `@polymarket/builder-signing-sdk` / `py-builder-signing-sdk` with `new BuilderConfig({ localBuilderCreds })` passed to `ClobClient`.
+
+### Remote Signing
+
+Keep builder credentials on a separate server. The unified SDK points at your signing endpoint:
+
+```typescript
+import { createSecureClient, remoteBuilderSigning } from "@polymarket/client";
+
+const client = await createSecureClient({
+  signer,
+  apiKey: remoteBuilderSigning({ url: "/api/builder/sign", credentials: "include" }),
+});
+```
+
+Server side, generate the headers with `buildHmacSignature(secret, timestamp, method, path, body)` (exported from `@polymarket/client`) — the endpoint contract and the 4 `POLY_BUILDER_*` headers are unchanged.
 
 ## Credential Lifecycle
 
-- **Create**: `client.createApiKey()` — generates new credentials with a nonce
-- **Derive**: `client.deriveApiKey(nonce)` — recovers existing credentials if you know the nonce
-- **Create or Derive**: `client.createOrDeriveApiKey()` — creates if first time, derives if existing
-- **Revoke builder key**: `client.revokeBuilderApiKey()` — invalidate compromised builder credentials
+- **Unified SDK**: `createSecureClient` creates **or** derives automatically (optionally with `nonce`); read `client.credentials` and store them to skip re-derivation later. Revoke with `endAuthentication()` (returns a `PublicClient`).
+- **Legacy standalone clients**: `createApiKey()` (new, with nonce), `deriveApiKey(nonce)`, `createOrDeriveApiKey()`.
+- **Builder keys**: revoke via the builder key endpoints (`DELETE /auth/builder-api-key`).
 
 Lost credentials + lost nonce = create fresh credentials. Save your nonce.

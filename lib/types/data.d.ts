@@ -1,50 +1,150 @@
 /**
- * Client for the Polymarket Data API — positions, trades, activity, holders,
- * leaderboards, open interest and portfolio value. No auth for these reads.
+ * Client for the Polymarket Data API v2 — positions, trades, activity,
+ * holders, leaderboards, open interest and portfolio value. No auth for
+ * these reads.
  *
- * Endpoint set verified against `data-openapi.yaml` and live responses.
- * Notable parameter shapes (live-verified):
- * - `/live-volume` takes `id` (the event id), not `event`.
- * - `/holders` requires the full 32-byte market (condition) id.
+ * On the /v2 routes (Data API v1 retires on 2026-10-24):
+ * - every response uses the v2 envelope `{ data, pagination? }`; a miss is
+ *   `data: null` or an empty list, never an error
+ * - pagination is cursor-only: pass `cursor`, follow `pagination.next_cursor`
+ *   (`offset` is rejected by v2 routes)
+ * - fields are snake_case; market selection is `condition` (aliases
+ *   `condition_id`/`conditionId`; max 20 comma-joined ids)
+ * - position lifecycle: `status` OPEN|REDEEMABLE|REDEEMABLE_LOST|MERGEABLE|CLOSED
+ *   and every row carries `redeemable`/`mergeable` flags
+ *
+ * Shapes live-verified against production (2026-10-05). `/other` and
+ * `/revisions` have no v2 counterpart and are gone; `/v1/accounting/snapshot`
+ * is the only v1 route that stays (documented exception).
  */
 import { type HttpConfig } from './http.js';
+/** v2 pagination echo (cursor superseded offset; `offset` stays request-rejected). */
+export interface DataPagination {
+    limit?: number;
+    offset?: number;
+    has_more?: boolean;
+    next_cursor?: string | null;
+    [key: string]: unknown;
+}
+/** v2 envelope: list routes return an array under `data`, single-object routes an object. */
+export interface DataPage<T> {
+    data: T | null;
+    pagination?: DataPagination;
+    [key: string]: unknown;
+}
+export type PositionStatus = 'OPEN' | 'REDEEMABLE' | 'REDEEMABLE_LOST' | 'MERGEABLE' | 'CLOSED';
 export interface DataPosition {
-    proxyWallet?: string;
-    asset?: string;
-    conditionId?: string;
-    size?: number;
-    avgPrice?: number;
-    initialValue?: number;
-    currentValue?: number;
-    cashPnl?: number;
-    percentPnl?: number;
-    totalBought?: number;
-    realizedPnl?: number;
-    curPrice?: number;
+    proxy_wallet?: string;
+    token_id?: string;
+    condition_id?: string;
+    current_size?: number;
+    avg_price?: number;
+    entry_cost_usdc?: number;
+    entry_fees_usdc?: number;
+    total_cost_usdc?: number;
+    current_price?: number;
+    current_value?: number;
+    total_size?: number;
+    realized_pnl?: number;
+    unrealized_pnl?: number;
+    total_pnl?: number;
+    percent_pnl?: number;
+    percent_realized_pnl?: number;
+    status?: PositionStatus | string;
     redeemable?: boolean;
     mergeable?: boolean;
+    negative_risk?: boolean;
+    archived?: boolean;
     title?: string;
     slug?: string;
+    icon?: string;
+    event_id?: string;
+    event_slug?: string;
     outcome?: string;
-    endDate?: string;
-    negativeRisk?: boolean;
+    outcome_index?: number;
+    opposite_outcome?: string;
+    opposite_token_id?: string;
+    end_date?: string;
+    last_event_at?: number;
+    first_entry_at?: number;
+    name?: string;
+    pseudonym?: string;
+    profile_image?: string;
     [key: string]: unknown;
 }
 export interface DataTrade {
-    proxyWallet?: string;
+    proxy_wallet?: string;
     side?: 'BUY' | 'SELL';
-    asset?: string;
-    conditionId?: string;
+    token_id?: string;
+    condition_id?: string;
     size?: number;
     price?: number;
-    outcome?: string;
-    outcomeIndex?: number;
     timestamp?: number;
     title?: string;
     slug?: string;
-    transactionHash?: string;
-    pseudonym?: string;
+    icon?: string;
+    event_slug?: string;
+    outcome?: string;
+    outcome_index?: number;
     name?: string;
+    pseudonym?: string;
+    bio?: string;
+    profile_image?: string;
+    transaction_hash?: string;
+    [key: string]: unknown;
+}
+export interface DataActivity {
+    proxy_wallet?: string;
+    timestamp?: number;
+    condition_id?: string;
+    type?: string;
+    size?: number;
+    usdc_size?: number;
+    transaction_hash?: string;
+    price?: number;
+    token_id?: string;
+    side?: 'BUY' | 'SELL';
+    outcome_index?: number;
+    title?: string;
+    slug?: string;
+    icon?: string;
+    event_slug?: string;
+    outcome?: string;
+    name?: string;
+    pseudonym?: string;
+    [key: string]: unknown;
+}
+/** One `data` row of GET /v2/holders: holders grouped per outcome token. */
+export interface DataHolderGroup {
+    token_id?: string;
+    holders?: Array<{
+        proxy_wallet?: string;
+        token_id?: string;
+        name?: string;
+        pseudonym?: string;
+        bio?: string;
+        amount?: number;
+        outcome_index?: number;
+        verified?: boolean;
+        display_username_public?: boolean;
+        profile_image?: string;
+        profile_image_optimized?: string;
+        [key: string]: unknown;
+    }>;
+    [key: string]: unknown;
+}
+/** `data` row of GET /v2/resolutions (payouts in 6-decimal base units). */
+export interface DataResolution {
+    condition_id?: string;
+    /** Production also emits `posed` (proposal pending) beyond the documented three. */
+    status?: 'inactive' | 'active' | 'posed' | 'resolved' | string;
+    payouts?: number[];
+    resolved_at?: string;
+    resolved_block?: number;
+    resolution_source?: string;
+    was_disputed?: boolean;
+    extended_review?: boolean;
+    transaction_hash?: string;
     [key: string]: unknown;
 }
 export declare class DataApiClient {
@@ -52,85 +152,122 @@ export declare class DataApiClient {
     private readonly http;
     constructor(baseUrl: string, http: HttpConfig);
     private request;
-    /** Current ERC1155 positions for a wallet (`user` required). */
+    /** Positions for a wallet and/or market (`user` and `condition` both optional). */
     positions(params: {
-        user: string;
-        market?: string | string[];
+        user?: string;
+        condition?: string | string[];
+        status?: PositionStatus;
         sizeThreshold?: number;
         redeemable?: boolean;
         mergeable?: boolean;
-        limit?: number;
-        offset?: number;
-        sortBy?: 'CURRENT' | 'CASH' | 'TIME' | 'CASHPNL' | 'PERCENTPNL';
+        archived?: boolean;
+        sortBy?: 'CURRENT_VALUE' | 'TOTAL_PNL' | 'REALIZED_PNL' | 'UNREALIZED_PNL';
         sortDirection?: 'ASC' | 'DESC';
-    }): Promise<DataPosition[]>;
-    /** Positions that already resolved (`GET /closed-positions`). */
+        limit?: number;
+        cursor?: string;
+    }): Promise<DataPage<DataPosition>>;
+    /** Positions that already resolved (v1 `/closed-positions` → `status=CLOSED`). */
     closedPositions(params: {
         user: string;
         limit?: number;
-        offset?: number;
-        sortBy?: string;
-    }): Promise<unknown>;
+        cursor?: string;
+    }): Promise<DataPage<DataPosition>>;
+    /** Positions of all users for one market (v1 `/v1/market-positions` → `condition`). */
+    marketPositions(params: {
+        condition: string;
+        limit?: number;
+        cursor?: string;
+    }): Promise<DataPage<DataPosition>>;
     /** Public trades filtered by user and/or market. */
     trades(params: {
         user?: string;
-        market?: string | string[];
+        condition?: string | string[];
         limit?: number;
-        offset?: number;
+        cursor?: string;
         takerOnly?: boolean;
         filterType?: 'CASH' | 'TOKENS';
         filterAmount?: number;
         side?: 'BUY' | 'SELL';
-    }): Promise<DataTrade[]>;
-    /** On-chain user activity (trades, splits, merges, redemptions…). */
+    }): Promise<DataPage<DataTrade>>;
+    /**
+     * On-chain user activity (trades, splits, merges, redemptions…).
+     *
+     * Production constraint (live-verified 2026-10-05): /v2/activity accepts
+     * exactly ONE `type` value per request — the plain single value is the only
+     * form that actually filters. Repeated keys fail with 400 "duplicate field
+     * `type`" and the bracket/CSV alternate forms return 200 with the filter
+     * silently ignored, so a multi-type array is rejected here instead of
+     * silently returning unfiltered data; issue one call per type.
+     */
     activity(params: {
         user: string;
         limit?: number;
-        offset?: number;
+        cursor?: string;
         type?: string[];
         start?: number;
         end?: number;
         side?: 'BUY' | 'SELL';
         conditionId?: string;
-    }): Promise<unknown>;
-    /** Top holders for one or more markets (full condition ids). */
+    }): Promise<DataPage<DataActivity>>;
+    /** Top holders for one or more markets (full condition ids; v2 param is `condition`). */
     holders(params: {
-        market: string | string[];
+        condition: string | string[];
         limit?: number;
-    }): Promise<unknown>;
+        includePnl?: boolean;
+    }): Promise<DataPage<DataHolderGroup> | Array<DataPage<DataHolderGroup>>>;
     /**
-     * Trader leaderboard rankings. The official spec param is `timePeriod`
-     * (DAY|WEEK|MONTH|ALL); production also tolerates the legacy `window`
-     * spelling (live-verified both return 200 on /v1/leaderboard).
+     * Trader leaderboard rankings (v2 `/v2/leaderboard`, param `time_period`).
+     * Rows carry `rank`, `user_id`, `pnl`, `volume`, `user_name`.
      */
     leaderboard(params?: {
         timePeriod?: 'DAY' | 'WEEK' | 'MONTH' | 'ALL';
         limit?: number;
-    }): Promise<unknown>;
-    /** Open interest; pass either `global: true`, a market (condition id), slug, or event id. */
+        cursor?: string;
+    }): Promise<DataPage<Record<string, unknown>>>;
+    /** Open interest; pass either `global: true`, a condition id, slug, or event id. */
     openInterest(params: {
         global?: boolean;
-        market?: string;
+        condition?: string;
         slug?: string;
         eventId?: string;
-    }): Promise<unknown>;
-    /** Live (in-game) volume for an event id. */
-    liveVolume(eventId: string): Promise<unknown>;
-    /** Total value of a user's positions in USD. */
-    value(user: string): Promise<Array<{
-        user: string;
-        value: number;
+    }): Promise<DataPage<{
+        condition_id?: string;
+        value?: number;
     }>>;
-    /** Number of distinct markets a user has traded. */
-    traded(user: string): Promise<unknown>;
-    /** Positions of all users for one market (`GET /v1/market-positions`). */
-    marketPositions(params: {
-        market: string;
+    /** Live (in-game) volume for an event id — `data.taker_volume_total` + per-market rows. */
+    liveVolume(eventId: string): Promise<DataPage<{
+        taker_volume_total?: number;
+        conditions?: Array<{
+            condition_id?: string;
+            taker_volume?: number;
+        }>;
+    }>>;
+    /** Total value of a user's positions in USD (v2 wraps the object in `data`). */
+    value(user: string): Promise<DataPage<{
+        proxy_wallet?: string;
+        value?: number;
+    }>>;
+    /**
+     * User stats (v1 `/traded` → v2 `/v2/user-stats`): distinct markets traded,
+     * biggest win, join date and the full all-time PnL breakdown.
+     */
+    userStats(user: string): Promise<DataPage<Record<string, unknown>>>;
+    /** User PnL time series (`interval`/`fidelity` buckets, decimal points). */
+    userPnl(params: {
+        user: string;
+        interval?: string;
+        fidelity?: string;
         limit?: number;
-    }): Promise<unknown>;
-    /** "Other" share size for augmented neg-risk events (`id` = event id). */
-    otherSize(params: {
-        eventId: string;
-        user?: string;
-    }): Promise<unknown>;
+        cursor?: string;
+    }): Promise<DataPage<Record<string, unknown>>>;
+    /** Resolution rows per condition id (use `status === "resolved"` payouts only). */
+    resolutions(params: {
+        conditionIds: string | string[];
+        limit?: number;
+        cursor?: string;
+    }): Promise<DataPage<DataResolution>>;
+    /** Token approval state of a wallet across Polymarket contracts. */
+    approvals(user: string): Promise<DataPage<Record<string, unknown>>>;
+    /** Data-API freshness: pipeline age, lagging mechanisms, ingestion cursors. */
+    status(): Promise<DataPage<Record<string, unknown>>>;
 }

@@ -37,24 +37,40 @@ Core reads:
 
 **Sort fields (live-verified, camelCase, NO underscores):** events accept `volume24hr`, `liquidity`, `endDate`, `competitive`, `closedTime`; markets additionally `volume`, `startDate`, `spread`, `lastTradePrice`, `bestBid`, `bestAsk`. The underscore form `volume_24hr` returns HTTP 422 "order fields are not valid" (older docs are wrong).
 
-## Data API
+**Protocol V2 fields on market objects:** every market carries `version` (`"v1"`/`"v2"`); V2 markets expose `positionIds` (plain decimal-string array) instead of relying on `clobTokenIds`, and `resolutionStatus` (`inactive|active|resolved`) instead of `umaResolutionStatus`. Pick the outcome id at your outcome's index; see concepts.md for the V1↔V2 mapping.
 
-- `GET /positions?user=` — `market[]`, `sizeThreshold` (single value, spec), `redeemable`, `mergeable`, `sortBy=CURRENT|CASH|TIME|CASHPNL|PERCENTPNL`, `sortDirection=ASC|DESC`, `limit` ≤500, `offset`
-- `GET /closed-positions?user=` — resolved positions with PnL
-- `GET /trades?user=&market=` — `takerOnly`, `filterType=CASH|TOKENS`, `filterAmount`, `side`, `limit` ≤500
-- `GET /activity?user=` — on-chain feed; `type[]` = TRADE|SPLIT|MERGE|REDEEM|CONVERSION|REWARD, `start`, `end`, `side`, `market=<condition id>` (spec param name)
-- `GET /holders?market=<full condition id>` — top holders per token (requires the full 32-byte id)
-- `GET /v1/leaderboard?timePeriod=DAY|WEEK|MONTH|ALL&limit=` — rank/proxyWallet/vol/pnl (legacy `window=` also tolerated live; both spellings verified 200)
-- `GET /oi` — open interest: `global=true` OR `market=` OR `slug=` OR `event=`
-- `GET /live-volume?id=<eventId>` — live in-game volume (**param is `id`, not `event`**)
-- `GET /value?user=` — total USD value of positions
-- `GET /traded?user=` — distinct markets traded
-- `GET /v1/market-positions?market=` — everyone's positions in one market
-- `GET /other?id=&user=` — "Other" share for augmented neg-risk events
-- `GET /revisions?questionID=` — moderated question revisions
-- `GET /v1/approvals?user=` — token approval state of a wallet
-- `GET /v1/activity/combos` · `GET /v1/positions/combos` — combo market activity/positions
+## Data API (v2)
+
+**Data API v1 retires on 2026-10-24** — every route below is the v2 replacement (same base host `https://data-api.polymarket.com`; until that date the v1 routes still answer). v2 conventions, live-verified against production (2026-10-05):
+
+- **Envelope**: every response is `{ "data": …, "pagination": … }`; a miss is `data: null` or an empty list, never an error.
+- **Pagination is cursor-only**: pass `?cursor=` from `pagination.next_cursor` (`offset` is rejected with a hint error). The pagination echo still carries `limit/offset/has_more/next_cursor`.
+- **Fields are snake_case** (`proxy_wallet`, `condition_id`, `token_id`, `usdc_size`…); request params accept both spellings, but prefer snake_case.
+- **Market selection is `condition`** (aliases `condition_id`/`conditionId`; max 20 comma-joined ids) — the v1 `market` param name is rejected.
+- **Position lifecycle**: `status` ∈ `OPEN|REDEEMABLE|REDEEMABLE_LOST|MERGEABLE|CLOSED`, and every position row carries `redeemable`/`mergeable` flags.
+- Notable renames: `asset` → `token_id`; leaderboard rows `proxyWallet` → `user_id` (+ `user_name`, `rank`, `pnl`, `volume`); positions `size` → `current_size`, `avgPrice` → `avg_price`, `initialValue` → `entry_cost_usdc`, `cashPnl` → `total_pnl`, `curPrice` → `current_price`.
+
+Routes:
+
+- `GET /v2/positions?user=&condition=&status=&size_threshold=&redeemable=&mergeable=&archived=&sort_by=&sort_direction=&limit=&cursor=` — open positions by default; `status=CLOSED` replaces `/closed-positions`; `condition` without `user` replaces `/v1/market-positions`; `sort_by` ∈ `current_value|total_pnl|realized_pnl|unrealized_pnl` (case-insensitive; the v1 values CURRENT/CASH/TIME/CASHPNL/PERCENTPNL are rejected)
+- `GET /v2/trades?user=&condition=&taker_only=&filter_type=CASH|TOKENS&filter_amount=&side=&limit=&cursor=`
+- `GET /v2/activity?user=&type=&start=&end=&side=&condition=&limit=&cursor=` — TRADE|SPLIT|MERGE|REDEEM|CONVERSION|REWARD; includes per-outcome REDEEM rows. **`type` accepts exactly ONE value per request** (live-verified 2026-10-05): the plain single value is the only form that filters; repeated keys (`type=A&type=B`) fail with 400 "duplicate field `type`", and the bracket (`type[]=`) and CSV (`type=A,B`) forms return 200 with the filter SILENTLY IGNORED — issue one call per type
+- `GET /v2/holders?condition=<full condition id>&limit=&include_pnl=` — top holders per outcome token; `include_pnl=true` adds entry/PnL per holder
+- `GET /v2/oi?global=true` OR `condition=` OR `slug=` OR `event=<eventId>`
+- `GET /v2/live-volume?id=<eventId>` — `data.taker_volume_total` + per-market `conditions[]`
+- `GET /v2/value?user=` — `data: { proxy_wallet, value }` (object, not array)
+- `GET /v2/user-stats?user=` — replaces `/traded`: `data.trades` is the distinct-market count, plus `biggest_win`, `join_date`, and the full `all_time_pnl` breakdown. (The official migration guide says unknown users return `data: null`, but production 2026-10-05 returned a zeroed object — `trades: 0`, `all_time_pnl: null` — for an inactive wallet; treat "no activity" as zeroed/null both.)
+- `GET /v2/leaderboard?time_period=DAY|WEEK|MONTH|ALL&limit=&cursor=`
+- `GET /v2/user-volume?user=` · `GET /v2/biggest-winners?window=` — analytics reads (params not yet live-verified)
+- `GET /v2/resolutions?condition_id=` — status `inactive|active|posed|resolved` (production also emits `posed` for pending proposals), `payouts[]` in 6-decimal base units; only trust `status:"resolved"` rows
+- `GET /v2/approvals?user=` — token approval state across Polymarket contracts
+- `GET /v2/status` — data freshness: pipeline age, lagging mechanisms, ingestion cursors
+- `GET /v2/activity/combos` · `GET /v2/positions/combos` — combo-market activity/positions (cursor pagination)
+- `GET /v1/accounting/snapshot` — the ONLY surviving v1 route (no v2 counterpart, documented exception)
 - `GET /` — health check
+- `GET /v2/user-pnl?user=&interval=&fidelity=` — PnL time series (`data.points[]`); `fidelity` is a duration enum `1d|18h|12h|3h|1h` (minutes values are rejected with 400)
+
+**Retired with no v2 counterpart**: `/other` (augmented neg-risk "Other" size) and `/revisions`. Both return 404 on `/v2/*` — drop them from integrations.
 
 ## CLOB REST
 
@@ -73,11 +89,11 @@ Public market data:
 - `GET /time` — server time
 
 Authenticated (L2 headers):
-- Orders: `GET /data/orders` (`market`, `asset_id`, `id`), `GET /data/order/{orderID}`, `POST /order`, `POST /orders` (≤15)
+- Orders: `GET /data/orders` (`market`, `asset_id`, `id`), `GET /data/order/{orderID}`, `POST /order`, `POST /orders` (≤15). Order responses return `tradeIDs` (the pre-2026-07 `transactionHashes` field is gone)
 - Trades: `GET /data/trades` (`market`, `asset_id`, `before`, `after`)
-- Cancels: `DELETE /order` body `{orderID}`, `DELETE /orders` body `[ids]`, `DELETE /cancel-all`, `DELETE /cancel-market-orders` body `{market[, asset_id]}`
+- Cancels: `DELETE /order` body `{orderID}`, `DELETE /orders` body `[ids]` (≤1000 since 2026-06), `DELETE /cancel-all`, `DELETE /cancel-market-orders` body `{market[, asset_id]}`
 - Heartbeat: `POST /heartbeats` body `{heartbeat_id}` (also `POST /v1/heartbeats`)
-- Balance: `GET /balance-allowance?asset_type=COLLATERAL|CONDITIONAL&token_id=&signature_type=`, refresh via `PUT /balance-allowance` or `GET /balance-allowance/update`
+- Balance: `GET /balance-allowance?asset_type=COLLATERAL|CONDITIONAL|CONDITIONAL-V2&token_id=&signature_type=`, refresh via `GET /balance-allowance/update` — **V2 positions use `CONDITIONAL-V2` with the V2 asset id; allowances are keyed by spender (check the ExchangeV3 entry)**
 - Keys: `GET /auth/api-keys`, `POST /auth/api-key`, `DELETE /auth/api-key`, `GET /auth/derive-api-key` (L1 headers)
 - Builder keys: `GET|POST|DELETE /auth/builder-api-key` (L2); builder attribution uses `POLY_BUILDER_*` headers
 - Status: `GET /auth/ban-status/closed-only`, `GET|POST /orders-scoring`, `GET /order-scoring`, notifications `GET|DELETE /notifications`
@@ -94,11 +110,16 @@ The official contracts page changed in 2026; the CURRENT addresses are:
 
 | Contract | Current address |
 |---|---|
-| CTF Exchange | `0xE111180000d2663C0091e4f400237545B87B996B` |
-| Neg Risk CTF Exchange | `0xe2222d279d744050d28e00520010520000310F59` |
+| CTF Exchange (V1/CTF) | `0xE111180000d2663C0091e4f400237545B87B996B` |
+| Neg Risk CTF Exchange (V1/CTF) | `0xe2222d279d744050d28e00520010520000310F59` |
 | Neg Risk Adapter (CLOB v1) | `0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296` (deprecated) |
 | Conditional Tokens (CTF) | `0x4D97DCd97eC945f40cF65F87097ACe5EA0476045` |
 | pUSD CollateralToken proxy | `0xC011a7E12a19f7B1f670d46F03B03f3342E82DFb` |
+| **PositionManager (V2)** | `0x006F54F7f9A22e0000CC2AB60031000000ae9fEF` |
+| **Router (V2)** | `0x12121212006e4CD160D18e3f00711DA5c3372600` |
+| **ExchangeV3 (V2)** | `0xe3333700cA9d93003F00f0F71f8515005F6c00Aa` |
+| **AutoRedeemer (V2)** | `0xa1200000d0002264C9a1698e001292D00E1b00af` |
+| **NegRiskModule (V2)** | `0x200000900045e3B6259600682756002200028933` |
 | CollateralOnramp / Offramp | `0x93070a847efEf7F70739046A929D47a521F5B8ee` / `0x2957922Eb93258b93368531d39fAcCA3B4dC5854` |
 | Gnosis Safe Factory / Proxy Factory | `0xaacfeea03eb1561c4e67d661e40682bd20e3541b` / `0xaB45c5A4B0c941a2F231C04C3f49182e1A254052` |
 | UMA Adapter | `0x6A9D222616C90FcA5754cd1333cFD9b7fb6a4F74` |

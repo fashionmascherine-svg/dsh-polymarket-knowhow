@@ -3,6 +3,23 @@
 
 # Core Concepts
 
+## Protocol V1 (CTF) vs Protocol V2
+
+Since October 2026 every Gamma market carries a `version` field (`"v1"` or `"v2"`) that decides which outcome identifier to use:
+
+| | Protocol V1 (CTF) | Protocol V2 |
+|---|---|---|
+| Outcome id field | `clobTokenIds` (JSON-encoded string array) | `positionIds` (plain decimal-string array) |
+| Position ledger | Conditional Tokens (CTF, ERC1155) | PositionManager (ERC1155, uint256 position ids) |
+| Trading contract | CTF Exchange / Neg Risk CTF Exchange | ExchangeV3 (EIP-712 domain version "3") |
+| Resolution field | `umaResolutionStatus` | `resolutionStatus` (`inactive`/`active`/`resolved`) |
+| CLOB balance kind | `asset_type=CONDITIONAL` | `asset_type=CONDITIONAL-V2` |
+| Split/merge/redeem | CTF contract | Router (`split`/`merge`/`redeem`, bytes31 conditionId, outcomeIndex 0=YES / 1=NO) |
+
+Pick the id at your outcome's index after decoding `outcomes`; reject unsupported versions and mismatched outcome counts. CTF token ids keep working for V1 markets; V2 markets trade exclusively through position ids. Orderbooks, prices, and WebSocket subscriptions accept the selected id unchanged (`assets_ids` on the market channel accepts V2 position ids).
+
+pUSD (not USDC.e) is the collateral for both systems on the current exchange; V2 payouts and Router amounts are expressed in 6-decimal base units (`1_000_000` = 1 pUSD = 1 share).
+
 ## Markets & Events
 
 A **market** is the fundamental tradable unit — a single binary Yes/No question.
@@ -51,8 +68,8 @@ Outstanding limit orders are **auto-cancelled** when a game begins. However, if 
 
 ## Positions & Tokens
 
-Trading creates **ERC1155 conditional tokens** backed by collateral (USDC.e historically; the exchange now lists **pUSD** — see api-endpoints.md):
-- Every Yes/No pair is backed by exactly **$1 of USDC.e**
+Trading creates **ERC1155 positions** backed by collateral (pUSD on the current exchange — see api-endpoints.md):
+- Every Yes/No pair is backed by exactly **$1 of pUSD**
 - Yes at $0.60 + No at $0.40 = $1.00 (always)
 - Winning tokens redeem for $1.00, losing tokens become $0.00
 
@@ -105,8 +122,8 @@ Price improvement benefits the taker: buy at $0.55, matched against sell at $0.5
 
 | Requirement | Description |
 |-------------|-------------|
-| Balance | Sufficient USDC.e (buys) or tokens (sells) |
-| Allowance | Approve Exchange contract to spend your assets |
+| Balance | Sufficient pUSD (buys) or positions (sells) |
+| Allowance | Approve the exchange (CTF Exchange / ExchangeV3) to spend your assets |
 | API Credentials | Valid API key for authenticated endpoints |
 
 Max order size: `balance - sum(openOrderSize - filledAmount)`
@@ -172,5 +189,8 @@ Standard neg risk requires all outcomes known at creation. **Augmented neg risk*
 
 | Contract | Address |
 |----------|---------|
-| Neg Risk CTF Exchange | `0xC5d563A36AE78145C45a50134d48A1215220f80a` |
-| Neg Risk Adapter | `0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296` |
+| Neg Risk CTF Exchange (V1/CTF) | `0xe2222d279d744050d28e00520010520000310F59` |
+| Neg Risk Adapter (CLOB v1, deprecated) | `0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296` |
+| NegRiskModule (V2) | `0x200000900045e3B6259600682756002200028933` |
+
+The pre-2026 Neg Risk Exchange address (`0xC5d563A3…`) is superseded.

@@ -154,7 +154,9 @@ test('oversized results are truncated with a marker', async () => {
 
 test('stdio transport speaks newline-delimited JSON-RPC end to end', async () => {
   const { spawn } = await import('node:child_process')
-  const child = spawn(process.execPath, ['scripts/mcp-server.mjs'], { cwd: new URL('../..', import.meta.url).pathname, stdio: ['pipe', 'pipe', 'pipe'] })
+  const { fileURLToPath } = await import('node:url')
+  const repoDir = fileURLToPath(new URL('../..', import.meta.url))
+  const child = spawn(process.execPath, ['scripts/mcp-server.mjs'], { cwd: repoDir, stdio: ['pipe', 'pipe', 'pipe'] })
   let buffered = ''
   const responses = new Map()
   child.stdout.setEncoding('utf8')

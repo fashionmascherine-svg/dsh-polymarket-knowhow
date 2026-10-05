@@ -40,7 +40,7 @@ test('.mcp.json wires the bundled MCP server through CLAUDE_PLUGIN_ROOT', () => 
 
 test('skills/polymarket/SKILL.md carries valid frontmatter for auto-discovery', () => {
   const md = readFileSync(root + 'skills/polymarket/SKILL.md', 'utf8')
-  assert.match(md, /^---\nname: polymarket\ndescription: .+\n---/, 'frontmatter with name + description required')
+  assert.match(md, /^---\r?\nname: polymarket\r?\ndescription: .+\r?\n---/, 'frontmatter with name + description required')
   assert.ok(md.includes('references/'), 'SKILL.md should index the reference modules')
 })
 

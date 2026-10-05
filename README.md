@@ -24,7 +24,7 @@ Four independent Cordis rows (disable any of them by id in a later patch layer):
 | Row id | Provides |
 |---|---|
 | `polymarket-service` | `ctx.polymarket` service: one configured client per Polymarket API (Gamma, CLOB, Data, Perps, RFQ, Bridge, Relayer) with timeout/retry/geoblock-aware HTTP |
-| `polymarket-tools` | ~22 always-on market-data tools + opt-in account/trading tools + Perps tools + `polymarket_knowledge` |
+| `polymarket-tools` | ~25 always-on market-data tools + opt-in account/trading tools + Perps tools + `polymarket_knowledge` |
 | `polymarket-skills` | Embedded runtime skill `polymarket` (16 knowledge modules as resources) via `ctx.skills` |
 | `polymarket-stream` | Optional market-channel WebSocket bridge emitting `polymarket/market-event` Cordis events |
 
@@ -32,7 +32,7 @@ Four independent Cordis rows (disable any of them by id in a later patch layer):
 
 - Discovery: `polymarket_search`, `polymarket_events_list` (offset + keyset pagination), `polymarket_event_get`, `polymarket_markets_list`, `polymarket_market_get`, `polymarket_tags_list`
 - CLOB data: `polymarket_orderbook` (single/batch), `polymarket_price` (single/batch), `polymarket_quote` (mid+spread+last in one call), `polymarket_price_history`, `polymarket_token_info` (tick size, neg-risk, token→market resolution)
-- Data API: `polymarket_positions`, `polymarket_trades_public`, `polymarket_activity`, `polymarket_holders`, `polymarket_leaderboard`, `polymarket_open_interest`, `polymarket_live_volume`, `polymarket_portfolio_value`
+- Data API v2: `polymarket_positions` (status lifecycle + cursor pagination), `polymarket_trades_public`, `polymarket_activity`, `polymarket_holders`, `polymarket_leaderboard`, `polymarket_open_interest`, `polymarket_live_volume`, `polymarket_portfolio_value`, `polymarket_user_stats`, `polymarket_resolutions`, `polymarket_approvals`
 - Meta: `polymarket_geoblock_check`, `polymarket_combo_markets`, `polymarket_knowledge`
 
 ### Opt-in tools (registered only when configured)
@@ -40,7 +40,7 @@ Four independent Cordis rows (disable any of them by id in a later patch layer):
 - `trading.enabled` + L2 credentials → `polymarket_account_orders`, `polymarket_account_trades`, `polymarket_cancel_orders`, `polymarket_balance_allowance`, `polymarket_heartbeat`, `polymarket_api_keys`, `polymarket_place_order`*
 - `perps.enabled` + perps credentials → `polymarket_perps_market_data`, `polymarket_perps_account`
 
-\* Order placement signs through the official [`@polymarket/clob-client`](https://www.npmjs.com/package/@polymarket/clob-client) SDK when it is resolvable (see [Trading setup](#trading-setup)). Everything else uses zero-dependency Node crypto.
+\* Order placement signs through the official unified [`@polymarket/client`](https://www.npmjs.com/package/@polymarket/client) SDK when it is resolvable (see [Trading setup](#trading-setup)) — it supports both V1 CTF token ids and Protocol V2 position ids. Everything else uses zero-dependency Node crypto.
 
 ## Install
 
@@ -52,7 +52,7 @@ dsh plugin --profile my-profile add github:fashionmascherine-svg/dsh-polymarket-
 dsh plugin --profile my-profile add ./dsh-polymarket-knowhow
 
 # From a tarball
-pnpm pack && dsh plugin --profile my-profile add ./dsh-polymarket-knowhow-0.2.0.tgz
+pnpm pack && dsh plugin --profile my-profile add ./dsh-polymarket-knowhow-0.3.0.tgz
 ```
 
 The package ships a self-contained `prepare` build. A git install fetches sources, so pnpm ≥10 asks you to allow the build once — copy the package key pnpm prints into your profile's `pnpm-workspace.yaml`:
@@ -118,13 +118,13 @@ Defaults are sensible (public endpoints, no credentials, trading off). Override 
 ### Trading setup
 
 1. Create L2 API credentials once (any method):
-   - `py-clob-client`: `ClobClient(host, key=pk, chain_id=137).create_or_derive_api_creds()`, or
-   - install `@polymarket/clob-client` into the profile and use its `createOrDeriveApiKey()`.
+   - `polymarket-client` (Python): `AsyncSecureClient.create(private_key=pk).credentials`, or
+   - install `@polymarket/client` into the profile and read `client.credentials` after `createSecureClient`.
 2. Put the four values in config or `POLY_*` environment variables.
-3. For order placement, also make the SDK resolvable and set `POLY_PRIVATE_KEY`:
+3. For order placement, also make the unified SDK resolvable and set `POLY_PRIVATE_KEY`:
 
 ```sh
-dsh plugin --profile my-profile add @polymarket/clob-client
+dsh plugin --profile my-profile add @polymarket/client viem
 ```
 
 Read-only account tools (orders, trades, cancels, balances, heartbeat) work without the SDK — they sign requests with Node's built-in HMAC (L2 headers `POLY_ADDRESS/SIGNATURE/TIMESTAMP/API_KEY/PASSPHRASE`).

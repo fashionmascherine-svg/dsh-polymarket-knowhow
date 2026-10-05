@@ -73,27 +73,30 @@ GET https://gamma-api.polymarket.com/tags
 GET https://gamma-api.polymarket.com/sports
 ```
 
-## Data API
+## Data API (v2)
 
-Base URL: `https://data-api.polymarket.com` — no auth required. Used for trades, positions, and user-specific data.
+Base URL: `https://data-api.polymarket.com` — no auth required. **v1 retires on 2026-10-24**: every read lives on `/v2/*` with a `{data, pagination}` envelope, cursor-only pagination and snake_case fields; market filtering uses `condition` (≤20 comma-joined ids). Full route inventory in api-endpoints.md.
+
+```bash
+# Trades for one market (cursor comes from pagination.next_cursor)
+curl "https://data-api.polymarket.com/v2/trades?condition=0x…&limit=50"
+
+# Open positions for a wallet (status=CLOSED replaces the old /closed-positions)
+curl "https://data-api.polymarket.com/v2/positions?user=0x…&status=OPEN&limit=20"
+```
 
 ## CLOB Orderbook
 
-Base URL: `https://clob.polymarket.com` — no auth for read endpoints.
+Base URL: `https://clob.polymarket.com` — no auth for read endpoints. Asset ids: CTF token ids (V1 markets) and Protocol V2 position ids are interchangeable inputs on every read route. The unified SDK calls are shown; the legacy `@polymarket/clob-client` getters (`getOrderBook`…) are superseded.
 
 ### Get Orderbook
 
 ```typescript
-// TypeScript
-const client = new ClobClient("https://clob.polymarket.com", 137);
-const book = await client.getOrderBook("TOKEN_ID");
+// TypeScript (unified SDK)
+import { createPublicClient } from "@polymarket/client";
+const client = createPublicClient();
+const book = await client.fetchOrderBook({ assetId });
 // { bids: [{price, size}...], asks: [{price, size}...], tick_size, min_order_size, neg_risk }
-```
-
-```python
-# Python
-client = ClobClient("https://clob.polymarket.com", chain_id=137)
-book = client.get_order_book("TOKEN_ID")
 ```
 
 ```bash
@@ -104,8 +107,8 @@ curl "https://clob.polymarket.com/book?token_id=TOKEN_ID"
 ### Prices
 
 ```typescript
-const buyPrice = await client.getPrice("TOKEN_ID", "BUY");   // best ask
-const sellPrice = await client.getPrice("TOKEN_ID", "SELL");  // best bid
+const buyPrice = await client.fetchPrice({ assetId, side: "BUY" });   // best ask
+const sellPrice = await client.fetchPrice({ assetId, side: "SELL" }); // best bid
 ```
 
 ```bash
@@ -115,7 +118,7 @@ curl "https://clob.polymarket.com/price?token_id=TOKEN_ID&side=BUY"
 ### Midpoint
 
 ```typescript
-const mid = await client.getMidpoint("TOKEN_ID");  // { mid: "0.50" }
+const mid = await client.fetchMidpoint({ assetId });  // { mid: "0.50" }
 ```
 
 If bid-ask spread > $0.10, Polymarket UI shows last traded price instead of midpoint.
@@ -123,20 +126,20 @@ If bid-ask spread > $0.10, Polymarket UI shows last traded price instead of midp
 ### Spread
 
 ```typescript
-const spread = await client.getSpread("TOKEN_ID");  // { spread: "0.04" }
+const spread = await client.fetchSpread({ assetId });  // { spread: "0.04" }
 ```
 
 ### Last Trade Price
 
 ```typescript
-const last = await client.getLastTradePrice("TOKEN_ID");  // { price, side }
+const last = await client.fetchLastTradePrice({ assetId });  // { price, side }
 ```
 
 ### Price History
 
 ```typescript
-const history = await client.getPricesHistory({
-  market: "TOKEN_ID",
+const history = await client.fetchPriceHistory({
+  assetId,
   interval: PriceHistoryInterval.ONE_DAY,
   fidelity: 60,  // data points every 60 minutes
 });
@@ -159,9 +162,9 @@ Use `startTs`/`endTs` for absolute ranges (mutually exclusive with `interval`).
 Walk the orderbook to estimate slippage for a given order size:
 
 ```typescript
-const price = await client.calculateMarketPrice(
-  "TOKEN_ID", Side.BUY, 500, OrderType.FOK
-);
+const price = await client.estimateMarketPrice({
+  assetId, side: OrderSide.BUY, amount: 500, orderType: "FOK",
+});
 ```
 
 ### Batch Requests
@@ -170,16 +173,16 @@ All orderbook queries have batch variants (up to 500 tokens):
 
 | Single | Batch | REST |
 |--------|-------|------|
-| `getOrderBook()` | `getOrderBooks()` | `POST /books` |
-| `getPrice()` | `getPrices()` | `POST /prices` |
-| `getMidpoint()` | `getMidpoints()` | `POST /midpoints` |
-| `getSpread()` | `getSpreads()` | `POST /spreads` |
-| `getLastTradePrice()` | `getLastTradesPrices()` | — |
+| `fetchOrderBook()` | `fetchOrderBooks()` | `POST /books` |
+| `fetchPrice()` | `fetchPrices()` | `POST /prices` |
+| `fetchMidpoint()` | `fetchMidpoints()` | `POST /midpoints` |
+| `fetchSpread()` | `fetchSpreads()` | `POST /spreads` |
+| `fetchLastTradePrice()` | `fetchLastTradePrices()` | — |
 
 ```typescript
-const prices = await client.getPrices([
-  { token_id: "TOKEN_A", side: Side.BUY },
-  { token_id: "TOKEN_B", side: Side.BUY },
+const prices = await client.fetchPrices([
+  { assetId: "TOKEN_A", side: OrderSide.BUY },
+  { assetId: "TOKEN_B", side: OrderSide.BUY },
 ]);
 ```
 

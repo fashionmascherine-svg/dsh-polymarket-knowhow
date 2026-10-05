@@ -275,83 +275,102 @@ export function createMcpServer(configOverrides = {}) {
     },
     {
       name: 'polymarket_positions',
-      description: 'Current ERC1155 positions for a Polygon wallet address (proxy wallet), with current value, cash PnL and redeemable flags.',
+      description: 'Positions for a Polygon wallet address (proxy wallet) from Data API v2, with current value, PnL breakdown, status lifecycle and redeemable flags. Pagination is cursor-based.',
       parameters: {
-        user: str('Wallet/proxy address (0x…)', true),
-        market: str('Filter by one condition id'),
+        user: str('Wallet/proxy address (0x…)'),
+        condition: str('Filter by condition id (0x…) — up to 20 comma-separated'),
+        status: enumParam(['OPEN', 'REDEEMABLE', 'REDEEMABLE_LOST', 'MERGEABLE', 'CLOSED'], 'Position lifecycle filter (CLOSED replaces the retired /closed-positions route)'),
         redeemable: bool('Only redeemable positions'),
-        sort_by: enumParam(['CURRENT', 'CASH', 'TIME', 'CASHPNL', 'PERCENTPNL'], 'Sort key'),
+        sort_by: enumParam(['CURRENT_VALUE', 'TOTAL_PNL', 'REALIZED_PNL', 'UNREALIZED_PNL'], 'Sort key (v2 snake_case values)'),
         sort_direction: enumParam(['ASC', 'DESC'], 'Sort direction'),
         size_threshold_min: num('Ignore positions smaller than this size'),
         limit: num('Page size (default 20, max 500)'),
-        offset: num('Pagination offset'),
+        cursor: str('Opaque cursor from a previous response (v2 is cursor-only)'),
       },
       async execute(args) {
-        const positions = await service.dataApi.positions({
-          user: args.user, market: args.market, redeemable: args.redeemable,
+        const page = await service.dataApi.positions({
+          user: args.user, condition: args.condition, status: args.status, redeemable: args.redeemable,
           sortBy: args.sort_by, sortDirection: args.sort_direction,
-          sizeThreshold: args.size_threshold_min, limit: args.limit, offset: args.offset,
+          sizeThreshold: args.size_threshold_min, limit: args.limit, cursor: args.cursor,
         })
-        return { count: positions.length, positions }
+        const rows = Array.isArray(page.data) ? page.data : []
+        return { count: rows.length, positions: rows, pagination: page.pagination }
       },
     },
     {
       name: 'polymarket_trades_public',
-      description: 'Public trade history filtered by user wallet and/or market condition id (Data API). Includes taker/taker-only filtering and price/size per fill.',
+      description: 'Public trade history filtered by user wallet and/or market condition id (Data API v2). Includes taker-only filtering and price/size per fill. Pagination is cursor-based.',
       parameters: {
         user: str('Wallet/proxy address (0x…)'),
-        market: str('Condition id (0x…)'),
+        condition: str('Condition id (0x…) — up to 20 comma-separated'),
         side: enumParam(['BUY', 'SELL'], 'Trade side filter'),
-        taker_only: bool('Only taker trades (default true)'),
+        taker_only: bool('Only taker trades'),
         limit: num('Page size (default 25, max 500)'),
-        offset: num('Pagination offset'),
+        cursor: str('Opaque cursor from a previous response (v2 is cursor-only)'),
       },
       async execute(args) {
-        const trades = await service.dataApi.trades({
-          user: args.user, market: args.market, side: args.side,
-          takerOnly: args.taker_only, limit: args.limit, offset: args.offset,
+        const page = await service.dataApi.trades({
+          user: args.user, condition: args.condition, side: args.side,
+          takerOnly: args.taker_only, limit: args.limit, cursor: args.cursor,
         })
-        return { count: trades.length, trades }
+        const rows = Array.isArray(page.data) ? page.data : []
+        return { count: rows.length, trades: rows, pagination: page.pagination }
       },
     },
     {
       name: 'polymarket_activity',
-      description: 'On-chain activity feed for a wallet: TRADE, SPLIT, MERGE, REDEEM, CONVERSION, REWARD events with timestamps and tx hashes.',
+      description: 'On-chain activity feed for a wallet (Data API v2): TRADE, SPLIT, MERGE, REDEEM, CONVERSION, REWARD events with timestamps and tx hashes. Cursor-based pagination. Note: production accepts exactly ONE type per request — call once per type instead of passing several.',
       parameters: {
         user: str('Wallet/proxy address (0x…)', true),
-        type: strArray('Filter types, e.g. ["TRADE","REDEEM"]'),
+        type: str('Single activity type to filter (TRADE|SPLIT|MERGE|REDEEM|CONVERSION|REWARD) — one per request'),
+        condition: str('Filter by condition id (0x…)'),
+        side: enumParam(['BUY', 'SELL'], 'Trade side filter'),
         limit: num('Page size (default 25)'),
-        offset: num('Pagination offset'),
+        cursor: str('Opaque cursor from a previous response (v2 is cursor-only)'),
       },
       async execute(args) {
-        return { activity: await service.dataApi.activity({ user: args.user, type: args.type, limit: args.limit, offset: args.offset }) }
+        const page = await service.dataApi.activity({
+          user: args.user, type: args.type !== undefined ? [args.type] : undefined, conditionId: args.condition, side: args.side,
+          limit: args.limit, cursor: args.cursor,
+        })
+        return { activity: page.data ?? [], pagination: page.pagination }
       },
     },
     {
       name: 'polymarket_holders',
-      description: 'Top holders for one or more markets (full 32-byte condition ids required).',
-      parameters: { market: str('Condition id (0x…)', true), limit: num('Holders per market (default 10, max 20)') },
+      description: 'Top holders for one or more markets (Data API v2; full 32-byte condition ids required, param `condition`).',
+      parameters: {
+        condition: str('Condition id (0x…)', true),
+        limit: num('Holders per market (default 10, max 20)'),
+        include_pnl: bool('Include entry price and PnL per holder'),
+      },
       async execute(args) {
-        return await service.dataApi.holders({ market: args.market, limit: args.limit })
+        return await service.dataApi.holders({ condition: args.condition, limit: args.limit, includePnl: args.include_pnl })
       },
     },
     {
       name: 'polymarket_leaderboard',
-      description: 'Trader leaderboard rankings by profit/volume for a time window.',
+      description: 'Trader leaderboard rankings by profit/volume for a time window (Data API v2).',
       parameters: {
         window: enumParam(['all', 'month', 'week', 'day'], 'Ranking window (default all)'),
         limit: num('Number of traders (default 25)'),
+        cursor: str('Opaque cursor from a previous response'),
       },
       async execute(args) {
-        return await service.dataApi.leaderboard({ timePeriod: args.window?.toUpperCase(), limit: args.limit })
+        return await service.dataApi.leaderboard({ timePeriod: args.window?.toUpperCase(), limit: args.limit, cursor: args.cursor })
       },
     },
     {
       name: 'polymarket_open_interest',
-      description: 'Open interest: globally, for one market (condition id), by event slug, or by event id.',
-      parameters: { global: bool('Return global open interest'), market: str('Condition id (0x…)'), slug: str('Market/event slug') },
+      description: 'Open interest (Data API v2): globally, for one market (condition id), by event slug, or by event id.',
+      parameters: {
+        global: bool('Return global open interest'),
+        condition: str('Condition id (0x…)'),
+        slug: str('Market/event slug'),
+        event_id: str('Numeric event id'),
+      },
       async execute(args) {
-        return await service.dataApi.openInterest({ global: args.global, market: args.market, slug: args.slug })
+        return await service.dataApi.openInterest({ global: args.global, condition: args.condition, slug: args.slug, eventId: args.event_id })
       },
     },
     {
@@ -364,10 +383,39 @@ export function createMcpServer(configOverrides = {}) {
     },
     {
       name: 'polymarket_portfolio_value',
-      description: "Total USD value of a wallet's Polymarket positions (Data API /value).",
+      description: "Total USD value of a wallet's Polymarket positions (Data API v2 /v2/value).",
       parameters: { user: str('Wallet/proxy address (0x…)', true) },
       async execute(args) {
         return { value: await service.dataApi.value(args.user) }
+      },
+    },
+    {
+      name: 'polymarket_user_stats',
+      description: 'User stats from Data API v2: distinct markets traded, biggest win, join date and the full all-time PnL breakdown (realized/unrealized, fees, rebates).',
+      parameters: { user: str('Wallet/proxy address (0x…)', true) },
+      async execute(args) {
+        return { stats: await service.dataApi.userStats(args.user) }
+      },
+    },
+    {
+      name: 'polymarket_resolutions',
+      description: 'Resolution rows for one or more markets (Data API v2): status (inactive/active/resolved), payout vector in 6-decimal base units, resolution source. Only trust payouts from rows with status "resolved".',
+      parameters: {
+        condition_ids: strArray('Condition ids (0x…)'),
+        limit: num('Page size'),
+        cursor: str('Opaque cursor from a previous response'),
+      },
+      async execute(args) {
+        if ((args.condition_ids?.length ?? 0) === 0) throw new Error('Provide at least one condition id')
+        return await service.dataApi.resolutions({ conditionIds: args.condition_ids, limit: args.limit, cursor: args.cursor })
+      },
+    },
+    {
+      name: 'polymarket_approvals',
+      description: 'Token approval state of a wallet across the Polymarket contracts (Data API v2): pUSD allowances, exchange operators, per-approval amounts.',
+      parameters: { user: str('Wallet/proxy address (0x…)', true) },
+      async execute(args) {
+        return { approvals: await service.dataApi.approvals(args.user) }
       },
     },
     {

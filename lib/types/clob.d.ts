@@ -131,7 +131,6 @@ export declare class ClobClient {
         assetId?: string;
         before?: number;
         after?: number;
-        limit?: number;
     }): Promise<unknown>;
     cancelOrder(orderId: string): Promise<unknown>;
     cancelOrders(orderIds: string[]): Promise<unknown>;
@@ -146,8 +145,12 @@ export declare class ClobClient {
         heartbeat_id: string;
         [key: string]: unknown;
     }>;
-    /** Collateral/conditional balance and allowance for the funder address. */
-    getBalanceAllowance(assetType: 'COLLATERAL' | 'CONDITIONAL', tokenId?: string): Promise<unknown>;
+    /**
+     * Collateral/conditional balance and allowance for the funder address.
+     * Protocol V2 positions use `CONDITIONAL-V2`; legacy CTF positions keep
+     * `CONDITIONAL`; pUSD collateral is `COLLATERAL`.
+     */
+    getBalanceAllowance(assetType: 'COLLATERAL' | 'CONDITIONAL' | 'CONDITIONAL-V2', tokenId?: string): Promise<unknown>;
     /** List all API keys on the account. */
     getApiKeys(): Promise<unknown>;
     /** Whether the account is restricted to close-only mode. */

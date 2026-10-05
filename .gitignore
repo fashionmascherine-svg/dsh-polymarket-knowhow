@@ -20,3 +20,4 @@ polymarket-skill/
 .DS_Store
 *.log
 *.tgz
+.formalswarm/

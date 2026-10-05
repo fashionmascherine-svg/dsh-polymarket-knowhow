@@ -83,23 +83,57 @@ test('clob: batch books and midpoints return every token', options, async () => 
   }
 })
 
-test('data-api: trades and leaderboard', options, async () => {
+test('data-api v2: trades and leaderboard envelopes', options, async () => {
   const trades = await dataApi.trades({ limit: 3 })
-  assert.ok(Array.isArray(trades) && trades.length > 0)
-  assert.ok(trades[0].proxyWallet !== undefined)
+  assert.ok(Array.isArray(trades.data) && trades.data.length > 0)
+  assert.ok(trades.data[0].proxy_wallet !== undefined, 'v2 trades are snake_case (proxy_wallet)')
+  assert.ok(trades.data[0].token_id !== undefined, 'v2 trades rename asset → token_id')
+  assert.ok(trades.pagination?.next_cursor !== undefined, 'v2 exposes a cursor')
   const leaderboard = await dataApi.leaderboard({ timePeriod: 'ALL', limit: 3 })
-  assert.ok(Array.isArray(leaderboard) && leaderboard.length > 0)
-  assert.ok(leaderboard[0].proxyWallet !== undefined)
+  assert.ok(Array.isArray(leaderboard.data) && leaderboard.data.length > 0)
+  assert.ok(leaderboard.data[0].user_id !== undefined, 'v2 leaderboard rows carry user_id')
 })
 
-test('data-api: open interest global + live volume shape', options, async () => {
+test('data-api v2: open interest global', options, async () => {
   const oi = await dataApi.openInterest({ global: true })
-  assert.ok(Array.isArray(oi) && oi[0].value > 0)
+  assert.ok(Array.isArray(oi.data) && oi.data[0].value > 0)
 })
 
-test('data-api: positions endpoint reachable', options, async () => {
-  const positions = await dataApi.positions({ user: '0x3873a776ec793da1c6fec49dafdd06bcc5e8dec8', limit: 5 })
-  assert.ok(Array.isArray(positions))
+test('data-api v2: positions + user stats endpoint reachable', options, async () => {
+  const user = '0x3873a776ec793da1c6fec49dafdd06bcc5e8dec8'
+  const positions = await dataApi.positions({ user, limit: 5 })
+  assert.ok(Array.isArray(positions.data))
+  const stats = await dataApi.userStats(user)
+  assert.ok(stats.data !== null && typeof stats.data === 'object')
+  assert.ok(stats.data.trades !== undefined, 'user-stats exposes the traded-market count')
+})
+
+test('data-api v2: holders by condition id', options, async () => {
+  const markets = await gamma.listMarkets({ active: true, closed: false, limit: 5 })
+  const conditionId = markets.find((m) => typeof m.conditionId === 'string')?.conditionId
+  assert.ok(conditionId, 'found a market condition id')
+  const holders = await dataApi.holders({ condition: conditionId, limit: 5 })
+  assert.ok(Array.isArray(holders.data), 'holders returns the v2 data array')
+})
+
+test('data-api v2: status + value + approvals reachable', options, async () => {
+  const status = await dataApi.status()
+  assert.ok(status.data?.computed_at !== undefined)
+  const value = await dataApi.value('0x3873a776ec793da1c6fec49dafdd06bcc5e8dec8')
+  assert.ok(value.data?.value !== undefined, 'value returns the data object')
+  const approvals = await dataApi.approvals('0x3873a776ec793da1c6fec49dafdd06bcc5e8dec8')
+  assert.ok(approvals.data?.contracts !== undefined, 'approvals lists contract rows')
+})
+
+test('data-api v2: activity single-type filter applies (P13 guard)', options, async () => {
+  const page = await dataApi.activity({ user: '0x3873a776ec793da1c6fec49dafdd06bcc5e8dec8', type: ['TRADE'], limit: 20 })
+  assert.ok(Array.isArray(page.data) && page.data.length > 0, 'activity returns rows for a heavy trader')
+  for (const row of page.data) assert.equal(row.type, 'TRADE', 'every row matches the requested single type')
+  // Multi-type is rejected locally (production has no working multi-type form).
+  await assert.rejects(
+    () => dataApi.activity({ user: '0x3873a776ec793da1c6fec49dafdd06bcc5e8dec8', type: ['TRADE', 'REDEEM'] }),
+    /single `type` per request/,
+  )
 })
 
 test('geoblock check responds', options, async () => {

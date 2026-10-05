@@ -96,12 +96,13 @@ test('registers the core read-only tools and no account tools when trading disab
     'polymarket_price_history', 'polymarket_token_info', 'polymarket_positions',
     'polymarket_trades_public', 'polymarket_activity', 'polymarket_holders',
     'polymarket_leaderboard', 'polymarket_open_interest', 'polymarket_live_volume',
-    'polymarket_portfolio_value', 'polymarket_geoblock_check', 'polymarket_combo_markets',
+    'polymarket_portfolio_value', 'polymarket_user_stats', 'polymarket_resolutions',
+    'polymarket_approvals', 'polymarket_geoblock_check', 'polymarket_combo_markets',
     'polymarket_knowledge',
   ]) {
     assert.ok(tools.has(expected), `missing tool ${expected}`)
   }
-  assert.equal(tools.size, 22, 'exactly the 22 core tools when trading/perps off')
+  assert.equal(tools.size, 25, 'exactly the 25 core tools when trading/perps off')
   assert.ok(!tools.has('polymarket_place_order'))
   assert.ok(!tools.has('polymarket_cancel_orders'))
 })
@@ -169,12 +170,79 @@ test('quote composes midpoint, spread and last trade', async () => {
   assert.deepEqual(result, { token_id: 'T', mid: '0.50', spread: '0.01', last_trade: { price: '0.49' } })
 })
 
-test('positions lowercases the user address', async () => {
+test('positions hits the v2 route, lowercases the user and returns the envelope', async () => {
   const tools = await collectTools()
   routes.length = 0
-  routes.push((url) => (url.includes('/positions') ? { body: [] } : undefined))
-  await tools.get('polymarket_positions').execute({ user: '0xABCDEF' }, EXEC)
-  assert.ok(calls.at(-1).url.includes('user=0xabcdef'))
+  routes.push((url) => (url.includes('/positions') ? { body: { data: [{ proxy_wallet: '0xabc' }], pagination: { has_more: true, next_cursor: 'CUR' } } } : undefined))
+  const result = await tools.get('polymarket_positions').execute({ user: '0xABCDEF' }, EXEC)
+  const last = calls.at(-1).url
+  assert.ok(last.includes('/v2/positions'), `v2 route used (${last})`)
+  assert.ok(last.includes('user=0xabcdef'))
+  assert.equal(result.count, 1)
+  assert.equal(result.positions[0].proxy_wallet, '0xabc')
+  assert.equal(result.pagination.next_cursor, 'CUR')
+})
+
+test('trades_public passes condition + cursor to the v2 route', async () => {
+  const tools = await collectTools()
+  routes.length = 0
+  routes.push((url) => (url.includes('/trades') ? { body: { data: [], pagination: { has_more: false, next_cursor: null } } } : undefined))
+  await tools.get('polymarket_trades_public').execute({ condition: '0xC1,0xC2', cursor: 'N', taker_only: false }, EXEC)
+  const last = decodeURIComponent(calls.at(-1).url)
+  assert.ok(last.includes('/v2/trades'), `v2 route used (${last})`)
+  assert.ok(last.includes('condition=0xC1,0xC2'), 'comma-joined condition filter')
+  assert.ok(last.includes('cursor=N'))
+  assert.ok(last.includes('taker_only=false'))
+})
+
+test('activity client contract: single type serializes plain, multi-type is rejected', async () => {
+  const dataApi = new DataApiClient('https://data-api.polymarket.com', { timeoutMs: 5000, maxRetries: 0, userAgent: 'test' })
+  routes.length = 0
+  routes.push((url) => (url.includes('/v2/activity') ? { body: { data: [], pagination: { has_more: false, next_cursor: null } } } : undefined))
+  // Single type → the only wire form production actually filters (one plain `type=` key).
+  await dataApi.activity({ user: '0xABC', type: ['TRADE'], limit: 5 })
+  const single = decodeURIComponent(calls.at(-1).url)
+  assert.ok(single.includes('type=TRADE'), `plain single type= key (${single})`)
+  assert.equal((single.match(/type=/g) ?? []).length, 1, 'exactly one type= key')
+  // Multi-type → loud local rejection; production either 400s (repeated keys)
+  // or returns 200 unfiltered (bracket/CSV forms), so never send it.
+  await assert.rejects(
+    () => dataApi.activity({ user: '0xABC', type: ['TRADE', 'REDEEM'] }),
+    /single `type` per request/,
+  )
+  // No type at all stays fine.
+  await dataApi.activity({ user: '0xABC', limit: 1 })
+  assert.ok(!calls.at(-1).url.includes('type='), 'no type key when unset')
+})
+
+test('activity tool forwards a single type', async () => {
+  const tools = await collectTools()
+  routes.length = 0
+  routes.push((url) => (url.includes('/v2/activity') ? { body: { data: [], pagination: { has_more: false, next_cursor: null } } } : undefined))
+  await tools.get('polymarket_activity').execute({ user: '0xABC', type: 'REDEEM' }, EXEC)
+  const last = decodeURIComponent(calls.at(-1).url)
+  assert.ok(last.includes('/v2/activity'), `v2 route used (${last})`)
+  assert.ok(last.includes('type=REDEEM'), 'single type forwarded as plain key')
+  assert.equal((last.match(/type=/g) ?? []).length, 1, 'exactly one type= key on the wire')
+})
+
+test('leaderboard tool forwards the v2 cursor', async () => {
+  const tools = await collectTools()
+  routes.length = 0
+  routes.push((url) => (url.includes('/v2/leaderboard') ? { body: { data: [], pagination: { has_more: false, next_cursor: null } } } : undefined))
+  await tools.get('polymarket_leaderboard').execute({ window: 'all', cursor: 'N' }, EXEC)
+  const last = calls.at(-1).url
+  assert.ok(last.includes('/v2/leaderboard'), `v2 route used (${last})`)
+  assert.ok(last.includes('cursor=N'), 'cursor forwarded to the v2 route')
+})
+
+test('toSdkCredentials maps the stored apiKey shape to the SDK key shape', async () => {
+  const { toSdkCredentials } = await import('../../lib/signing.js')
+  assert.deepEqual(
+    toSdkCredentials({ apiKey: 'K', secret: 'S', passphrase: 'P' }),
+    { key: 'K', secret: 'S', passphrase: 'P' },
+    '@polymarket/client validates credentials.key, not credentials.apiKey',
+  )
 })
 
 test('live_volume uses id param', async () => {
@@ -190,14 +258,14 @@ test('trading tools register only when enabled AND credentials resolve', async (
   // enabled but NO resolved credentials → not registered (documented gate)
   const noCreds = await collectTools({ trading: { enabled: true } })
   assert.ok(!noCreds.has('polymarket_place_order'), 'no trading tools without creds')
-  assert.equal(noCreds.size, 22)
-  // enabled AND creds → the full 22 + 7 set
+  assert.equal(noCreds.size, 25)
+  // enabled AND creds → the full 25 + 7 set
   const tools = await collectTools({ trading: { enabled: true }, withCreds: true })
   assert.ok(tools.has('polymarket_place_order'), 'trading tools registered when enabled+creds')
   for (const t of ['polymarket_account_orders', 'polymarket_account_trades', 'polymarket_cancel_orders', 'polymarket_balance_allowance', 'polymarket_heartbeat', 'polymarket_api_keys']) {
     assert.ok(tools.has(t), `missing ${t}`)
   }
-  assert.equal(tools.size, 29, '22 core + 7 trading when perps off')
+  assert.equal(tools.size, 32, '25 core + 7 trading when perps off')
 })
 
 test('perps tools register only when enabled AND proxy/secret resolve', async () => {

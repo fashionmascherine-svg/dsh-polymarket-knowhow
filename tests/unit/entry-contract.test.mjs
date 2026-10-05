@@ -11,15 +11,18 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const libDir = fileURLToPath(new URL('../../lib/', import.meta.url))
+// Windows-safe specifier: ESM dynamic import needs a file:// URL, a bare
+// `C:\...` path fails with ERR_UNSUPPORTED_ESM_URL_SCHEME.
+const libUrl = (name) => pathToFileURL(libDir + name).href
 
 const ENTRY_MODULES = ['service', 'tools', 'skills', 'stream']
 
 test('entry modules satisfy the loader contract', async () => {
   for (const name of ENTRY_MODULES) {
-    const mod = await import(`${libDir}${name}.js`)
+    const mod = await import(libUrl(`${name}.js`))
     const label = `lib/${name}.js`
 
     // 1. Config exported as a value with schemastery validate support.
@@ -41,11 +44,11 @@ test('entry modules satisfy the loader contract', async () => {
   }
 
   // tools.ts reads both ctx.polymarket and ctx.tools.
-  const tools = await import(`${libDir}tools.js`)
+  const tools = await import(libUrl('tools.js'))
   for (const required of ['polymarket', 'tools']) {
     assert.ok(tools.inject.includes(required), `tools inject must include ${required}`)
   }
-  const skills = await import(`${libDir}skills.js`)
+  const skills = await import(libUrl('skills.js'))
   assert.ok(skills.inject.includes('skills'), 'skills inject must include skills')
 })
 

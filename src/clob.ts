@@ -287,7 +287,6 @@ export class ClobClient {
     assetId?: string
     before?: number
     after?: number
-    limit?: number
   } = {}): Promise<unknown> {
     return this.l2('/data/trades', {
       query: { market: params.market, asset_id: params.assetId, before: params.before, after: params.after },
@@ -332,8 +331,12 @@ export class ClobClient {
     }
   }
 
-  /** Collateral/conditional balance and allowance for the funder address. */
-  async getBalanceAllowance(assetType: 'COLLATERAL' | 'CONDITIONAL', tokenId?: string): Promise<unknown> {
+  /**
+   * Collateral/conditional balance and allowance for the funder address.
+   * Protocol V2 positions use `CONDITIONAL-V2`; legacy CTF positions keep
+   * `CONDITIONAL`; pUSD collateral is `COLLATERAL`.
+   */
+  async getBalanceAllowance(assetType: 'COLLATERAL' | 'CONDITIONAL' | 'CONDITIONAL-V2', tokenId?: string): Promise<unknown> {
     return this.l2('/balance-allowance', {
       query: { asset_type: assetType, token_id: tokenId, signature_type: this.credentials?.signatureType },
     })

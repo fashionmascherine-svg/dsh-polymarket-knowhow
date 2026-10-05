@@ -28,106 +28,79 @@ Price must conform to the market's tick size or the order is rejected.
 | `0.001` | 3 decimals | 0.001, 0.500, 0.999 |
 | `0.0001` | 4 decimals | 0.0001, 0.5000, 0.9999 |
 
-Get tick size: `client.getTickSize(tokenID)` (TS) / `client.get_tick_size(token_id)` (Python). Also available as `minimum_tick_size` on market objects.
+Get tick size: read `market.trading.minimumTickSize` (unified SDK market object) or `minimum_tick_size` on raw Gamma/CLOB market objects; the CLOB route `GET /tick-size?token_id=` also returns it. The unified SDK resolves tick size, neg-risk and fee schedule automatically when placing orders — the legacy `getTickSize`/`getNegRisk` client calls are gone.
+
+## Order Signing Domains (V1 vs V2)
+
+- **V1/CTF orders** settle on CTF Exchange / Neg Risk CTF Exchange: EIP-712 domain `Polymarket CTF Exchange`, version `"2"`, chainId 137.
+- **V2 orders** settle on ExchangeV3 (`0xe3333700cA9d93003F00f0F71f8515005F6c00Aa`): same domain name, version **`"3"`**, chainId 137. Keep the CTFExchangeV2 signed-order struct, set `order.tokenId` to the V2 position id and re-sign.
 
 ## Limit Order (GTC)
 
 ```typescript
-// TypeScript — one-step
-const response = await client.createAndPostOrder(
-  { tokenID: "TOKEN_ID", price: 0.50, size: 10, side: Side.BUY },
-  { tickSize: "0.01", negRisk: false },
-  OrderType.GTC
-);
+// TypeScript — unified SDK (GTC by default; tick size/neg-risk/fees auto-resolved)
+const assetId = market.version === "v2" ? outcome.positionId : outcome.tokenId;
+const response = await client.placeLimitOrder({
+  assetId,
+  price: "0.50",
+  size: "10",          // shares
+  side: OrderSide.BUY,
+});
+if (!response.ok) throw new Error(response.message);
 ```
 
 ```python
-# Python — one-step
-response = client.create_and_post_order(
-    OrderArgs(token_id="TOKEN_ID", price=0.50, size=10, side=BUY),
-    options={"tick_size": "0.01", "neg_risk": False},
-    order_type=OrderType.GTC,
-)
+# Python
+response = await client.place_limit_order(asset_id=asset_id, price="0.50", size="10", side="BUY")
 ```
 
 ### Two-step (sign then submit)
 
 ```typescript
-// TypeScript
-const signedOrder = await client.createOrder(
-  { tokenID: "TOKEN_ID", price: 0.50, size: 10, side: Side.BUY },
-  { tickSize: "0.01", negRisk: false }
-);
-const response = await client.postOrder(signedOrder, OrderType.GTC);
+// TypeScript — unified SDK
+const signed = await client.createLimitOrder({ assetId, price: "0.50", size: "10", side: OrderSide.BUY });
+const response = await client.postOrder(signed); // order type lives on the signed order
+```
+
+Legacy standalone clients (`@polymarket/clob-client`, V1/CTF only): `createAndPostOrder({ tokenID, price, size, side }, { tickSize, negRisk }, OrderType.GTC)` / `create_and_post_order(...)`.
+
+## Market Order (FOK / FAK)
+
+- **BUY**: `amount` = pUSD amount to spend
+- **SELL**: `shares` = number of shares to sell (with optional `minPrice` slippage floor)
+- `orderType` defaults to FAK; pass FOK for all-or-nothing
+
+```typescript
+// TypeScript — unified SDK: BUY spends up to 10 pUSD, unfilled remainder is canceled
+const response = await client.placeMarketOrder({
+  assetId,
+  side: OrderSide.BUY,
+  amount: "10",           // pUSD spend (SELL uses `shares`)
+  orderType: OrderType.FOK,
+});
 ```
 
 ```python
 # Python
-signed_order = client.create_order(
-    OrderArgs(token_id="TOKEN_ID", price=0.50, size=10, side=BUY),
-    options={"tick_size": "0.01", "neg_risk": False},
-)
-response = client.post_order(signed_order, OrderType.GTC)
+response = await client.place_market_order(asset_id=asset_id, side="BUY", amount="10")
 ```
 
-## Market Order (FOK / FAK)
-
-- **BUY**: `amount` = dollar amount to spend
-- **SELL**: `amount` = number of shares to sell
-- `price` = worst-price limit (slippage protection), not target execution price
-
-```typescript
-// TypeScript — FOK BUY: spend exactly $100 or cancel
-const buyOrder = await client.createMarketOrder(
-  { tokenID: "TOKEN_ID", side: Side.BUY, amount: 100, price: 0.50 },
-  { tickSize: "0.01", negRisk: false }
-);
-await client.postOrder(buyOrder, OrderType.FOK);
-
-// One-step convenience
-const response = await client.createAndPostMarketOrder(
-  { tokenID: "TOKEN_ID", side: Side.BUY, amount: 100, price: 0.50 },
-  { tickSize: "0.01", negRisk: false },
-  OrderType.FOK
-);
-```
-
-```python
-# Python — FOK BUY
-buy_order = client.create_market_order(
-    token_id="TOKEN_ID", side=BUY, amount=100, price=0.50,
-    options={"tick_size": "0.01", "neg_risk": False},
-)
-client.post_order(buy_order, OrderType.FOK)
-```
+Legacy standalone clients: `createAndPostMarketOrder({ tokenID, side, amount, price }, { tickSize, negRisk }, OrderType.FOK)`.
 
 ## GTD Order (Expiring)
 
-Expiration = UTC seconds timestamp. Security threshold: add 60 seconds minimum.
+Legacy standalone clients: expiration = UTC seconds, effective lifetime = `now + 60 + N`.
 
-**Effective lifetime of N seconds: `now + 60 + N`**
+**Unified SDK**: pass `expiration` (unix seconds, at least 3 minutes in the future) to `placeLimitOrder` — providing it creates a GTD order:
 
 ```typescript
-// TypeScript — expire in 1 hour
-const expiration = Math.floor(Date.now() / 1000) + 60 + 3600;
-
-const response = await client.createAndPostOrder(
-  { tokenID: "TOKEN_ID", price: 0.50, size: 10, side: Side.BUY, expiration },
-  { tickSize: "0.01", negRisk: false },
-  OrderType.GTD
-);
-```
-
-```python
-# Python — expire in 1 hour
-import time
-expiration = int(time.time()) + 60 + 3600
-
-response = client.create_and_post_order(
-    OrderArgs(token_id="TOKEN_ID", price=0.50, size=10, side=BUY, expiration=expiration),
-    options={"tick_size": "0.01", "neg_risk": False},
-    order_type=OrderType.GTD,
-)
+const response = await client.placeLimitOrder({
+  assetId,
+  price: "0.50",
+  size: "10",
+  side: OrderSide.BUY,
+  expiration: Math.floor(Date.now() / 1000) + 3600, // → GTD, expires in 1 hour
+});
 ```
 
 ## Post-Only Orders
@@ -135,13 +108,8 @@ response = client.create_and_post_order(
 Guarantee maker status. If order would cross spread, it's rejected (not executed).
 
 ```typescript
-// TypeScript
-const response = await client.postOrder(signedOrder, OrderType.GTC, true);
-```
-
-```python
-# Python
-response = client.post_order(signed_order, OrderType.GTC, post_only=True)
+// TypeScript — unified SDK
+const response = await client.placeLimitOrder({ assetId, price: "0.50", size: "10", side: OrderSide.BUY, postOnly: true });
 ```
 
 - Only works with GTC and GTD
@@ -149,64 +117,31 @@ response = client.post_order(signed_order, OrderType.GTC, post_only=True)
 
 ## Batch Orders
 
-Up to **15 orders** in a single request.
+Up to **15 orders** in a single request (`POST /orders`, wire-level cap unchanged).
 
 ```typescript
-// TypeScript
-const orders: PostOrdersArgs[] = [
-  {
-    order: await client.createOrder(
-      { tokenID: "TOKEN_ID", price: 0.48, side: Side.BUY, size: 500 },
-      { tickSize: "0.01", negRisk: false }
-    ),
-    orderType: OrderType.GTC,
-  },
-  {
-    order: await client.createOrder(
-      { tokenID: "TOKEN_ID", price: 0.52, side: Side.SELL, size: 500 },
-      { tickSize: "0.01", negRisk: false }
-    ),
-    orderType: OrderType.GTC,
-  },
-];
-const response = await client.postOrders(orders);
+// TypeScript — unified SDK: sign each order, then post them together
+const signedA = await client.createLimitOrder({ assetId, price: "0.48", size: "500", side: OrderSide.BUY });
+const signedB = await client.createLimitOrder({ assetId, price: "0.52", size: "500", side: OrderSide.SELL });
+const response = await client.postOrders([signedA, signedB]);
 ```
 
-```python
-# Python
-response = client.post_orders([
-    PostOrdersArgs(
-        order=client.create_order(
-            OrderArgs(price=0.48, size=500, side=BUY, token_id="TOKEN_ID"),
-            options={"tick_size": "0.01", "neg_risk": False},
-        ),
-        orderType=OrderType.GTC,
-    ),
-    PostOrdersArgs(
-        order=client.create_order(
-            OrderArgs(price=0.52, size=500, side=SELL, token_id="TOKEN_ID"),
-            options={"tick_size": "0.01", "neg_risk": False},
-        ),
-        orderType=OrderType.GTC,
-    ),
-])
-```
+Legacy standalone clients: `postOrders([{ order, orderType }…])`.
 
 ## Cancel Orders
 
 All cancel endpoints require L2 authentication.
 
 ```typescript
-// TypeScript
-await client.cancelOrder("0xORDER_ID");                          // single
-await client.cancelOrders(["0xID_1", "0xID_2"]);                 // multiple
-await client.cancelAll();                                         // all orders
-await client.cancelMarketOrders({ market: "0xCONDITION_ID" });  // by market
-await client.cancelMarketOrders({                                 // by token
-  market: "0xCONDITION_ID",
-  asset_id: "TOKEN_ID",
-});
+// TypeScript — unified SDK (request objects, camelCase)
+await client.cancelOrder({ orderId: "0xORDER_ID" });                    // single
+await client.cancelOrders({ orderIds: ["0xID_1", "0xID_2"] });          // multiple
+await client.cancelAll();                                               // all orders
+await client.cancelMarketOrders({ conditionId: "0xCONDITION_ID" });     // by market
+await client.cancelMarketOrders({ conditionId: "0xCONDITION_ID", assetId: "TOKEN_ID" }); // by token
 ```
+
+Legacy standalone clients: `cancelOrder("0xID")`, `cancelOrders([...])`, `cancelAll()`, `cancelMarketOrders({ market, asset_id })`. `DELETE /orders` accepts at most 1000 ids (since 2026-06).
 
 ```python
 # Python
@@ -296,9 +231,13 @@ RETRYING ───┘
 
 ## Prerequisites
 
-Before placing orders, the funder address must approve the Exchange contract:
-- **Buying**: the funder must have set a **USDC.e** allowance greater than or equal to the spending amount.
-- **Selling**: the funder must have set a **conditional token** allowance greater than or equal to the selling amount.
+Before placing orders, the funder address must have approved the exchange:
+- **Buying (V1)**: pUSD allowance ≥ spend on CTF Exchange / Neg Risk CTF Exchange. **Buying (V2)**: pUSD `approve(EXCHANGE_V3, amount)` covering collateral + fees.
+- **Selling (V1)**: conditional-token allowance ≥ sell amount on the exchange. **Selling (V2)**: `setApprovalForAll(EXCHANGE_V3, true)` on PositionManager.
+
+The unified SDK handles this automatically: `SecureClient` detects missing allowances, approves, refreshes and retries during order placement; `client.setupTradingApprovals()` pre-approves every V1+V2 trading contract (idempotent).
+
+**V2 fill math** (integer base units, maker's signed amounts): `counterAmount = floor(makerAssetFill × takerAmount / makerAmount)` where `makerAssetFill` is collateral for BUY, shares for SELL. ExchangeV3 reduces a BUY's remaining collateral budget by actual spend. Fees: BUY adds to collateral spend, SELL is deducted from proceeds.
 
 Max order size = `balance - sum(openOrderSize - filledAmount)`
 

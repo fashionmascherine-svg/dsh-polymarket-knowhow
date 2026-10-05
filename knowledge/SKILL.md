@@ -6,16 +6,16 @@
 
 Use this skill when the user asks about or needs to build:
 - Polymarket API authentication (L1/L2, API keys, HMAC signing)
-- Placing or managing orders (limit, market, GTC, GTD, FOK, FAK, batch, cancel)
+- Placing or managing orders (limit, market, GTC, GTD, FOK, FAK, batch, cancel) on V1 (CTF) and Protocol V2 markets
 - Reading orderbook data (prices, spreads, midpoints, depth)
-- Market data fetching (events, markets, by slug, by tag, pagination)
-- WebSocket subscriptions (market channel, user channel, sports)
-- CTF operations (split, merge, redeem positions)
+- Market data fetching (events, markets, by slug, by tag, pagination; Data API v2)
+- WebSocket subscriptions (market channel, user channel, sports, PolyBolt reference prices)
+- CTF operations (split, merge, redeem — CTF and V2 Router)
 - Negative risk markets (multi-outcome, conversion, augmented neg risk)
 - Bridge operations (deposits, withdrawals, multi-chain)
 - Gasless transactions (relayer client, order attribution)
 - Builder program integration (order attribution, API keys, tiers)
-- Polymarket SDK usage (TypeScript @polymarket/clob-client, Python py-clob-client)
+- Polymarket SDK usage (unified TypeScript `@polymarket/client` / Python `polymarket-client`)
 
 ## API Configuration
 
@@ -23,10 +23,11 @@ Use this skill when the user asks about or needs to build:
 |-----|----------|------|---------|
 | CLOB | `https://clob.polymarket.com` | L2 for trade endpoints | Orderbook, prices, order submission |
 | Gamma / Data | `https://gamma-api.polymarket.com` | None | Events, markets, search |
-| Data API | `https://data-api.polymarket.com` | None | Trades, positions, user data |
+| Data API (v2) | `https://data-api.polymarket.com` | None | Positions, trades, activity, user data (`/v2/*`; v1 retires 2026-10-24) |
 | WebSocket (Market) | `wss://ws-subscriptions-clob.polymarket.com/ws/market` | None | Real-time orderbook |
 | WebSocket (User) | `wss://ws-subscriptions-clob.polymarket.com/ws/user` | API creds in message | Trade/order updates |
 | WebSocket (Sports) | `wss://sports-api.polymarket.com/ws` | None | Live scores |
+| WebSocket (PolyBolt) | `wss://ws-live-v2.polymarket.com/ws` | CLOB creds (`op: auth`) | Reference prices (crypto/equity/TWAP) |
 | Relayer | `https://relayer-v2.polymarket.com/` | Builder headers | Gasless transactions |
 | Bridge | `https://bridge.polymarket.com` | None | Deposits/withdrawals |
 | Perps | `https://api.perpetuals.polymarket.com` | POLYMARKET-PROXY/SECRET | Perpetual futures |
@@ -35,65 +36,66 @@ Use this skill when the user asks about or needs to build:
 
 ## Contract Addresses (Polygon — current official listing)
 
+V1/CTF system:
+
 | Contract | Address |
 |----------|---------|
-| pUSD CollateralToken proxy | `0xC011a7E12a19f7B1f670d46F03B03f3342E82DFb` |
 | CTF (Conditional Tokens) | `0x4D97DCd97eC945f40cF65F87097ACe5EA0476045` |
 | CTF Exchange | `0xE111180000d2663C0091e4f400237545B87B996B` |
 | Neg Risk CTF Exchange | `0xe2222d279d744050d28e00520010520000310F59` |
 | Neg Risk Adapter (CLOB v1) | `0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296` (deprecated) |
 
+Protocol V2 system:
+
+| Contract | Address |
+|----------|---------|
+| pUSD CollateralToken proxy | `0xC011a7E12a19f7B1f670d46F03B03f3342E82DFb` |
+| PositionManager | `0x006F54F7f9A22e0000CC2AB60031000000ae9fEF` |
+| Router (split/merge/redeem) | `0x12121212006e4CD160D18e3f00711DA5c3372600` |
+| ExchangeV3 (EIP-712 version "3") | `0xe3333700cA9d93003F00f0F71f8515005F6c00Aa` |
+| AutoRedeemer | `0xa1200000d0002264C9a1698e001292D00E1b00af` |
+| NegRiskModule | `0x200000900045e3B6259600682756002200028933` |
+
 > The exchange addresses above supersede the pre-2026 listings (`0x4bFb41d5…`, `0xC5d563A3…`) still found in older guides. Always re-verify at docs.polymarket.com/resources/contracts.
 
 ## Client Setup
 
-### TypeScript
+### TypeScript — unified SDK (recommended, V1 + V2)
 ```typescript
-import { ClobClient, Side, OrderType } from "@polymarket/clob-client";
-import { Wallet } from "ethers"; // v5.8.0
+import { createSecureClient, OrderSide } from "@polymarket/client";
+import { privateKey } from "@polymarket/client/viem"; // requires viem
 
-const HOST = "https://clob.polymarket.com";
-const CHAIN_ID = 137;
-const signer = new Wallet(process.env.PRIVATE_KEY);
+// Auto-derives L2 credentials and resolves the account wallet (funder).
+const client = await createSecureClient({
+  wallet: process.env.POLYMARKET_WALLET_ADDRESS, // omit to use the signer's Deposit Wallet
+  signer: privateKey(process.env.POLYMARKET_PRIVATE_KEY),
+  // resume with stored creds instead of deriving: credentials: { key, secret, passphrase }
+});
 
-// Step 1: L1 — derive API credentials
-const tempClient = new ClobClient(HOST, CHAIN_ID, signer);
-const apiCreds = await tempClient.createOrDeriveApiKey();
+// Asset ids: V1 markets → outcome.tokenId, V2 markets → outcome.positionId
+const assetId = market.version === "v2" ? market.outcomes.yes.positionId : market.outcomes.yes.tokenId;
 
-// Step 2: L2 — init trading client
-const client = new ClobClient(
-  HOST,
-  CHAIN_ID,
-  signer,
-  apiCreds,
-  2,                // signatureType: 0=EOA, 1=POLY_PROXY, 2=GNOSIS_SAFE
-  "FUNDER_ADDRESS"  // proxy wallet address from polymarket.com/settings
-);
+// GTC limit (GTD: add expiration ≥3 min ahead; postOnly supported)
+await client.placeLimitOrder({ assetId, side: OrderSide.BUY, price: "0.50", size: "10" });
+// Marketable FOK/FAK: BUY takes a pUSD `amount`, SELL takes `shares`
+await client.placeMarketOrder({ assetId, side: OrderSide.BUY, amount: "10" });
 ```
+Tick size, neg-risk and fee schedule resolve automatically — there are no `getTickSize`/`getNegRisk` calls anymore.
 
 ### Python
 ```python
-from py_clob_client.client import ClobClient
-import os
+from polymarket import AsyncSecureClient
 
-host = "https://clob.polymarket.com"
-chain_id = 137
-pk = os.getenv("PRIVATE_KEY")
-
-# Step 1: L1 — derive API credentials
-temp_client = ClobClient(host, key=pk, chain_id=chain_id)
-api_creds = temp_client.create_or_derive_api_creds()
-
-# Step 2: L2 — init trading client
-client = ClobClient(
-    host,
-    key=pk,
-    chain_id=chain_id,
-    creds=api_creds,
-    signature_type=2,  # 0=EOA, 1=POLY_PROXY, 2=GNOSIS_SAFE
-    funder="FUNDER_ADDRESS",
+client = await AsyncSecureClient.create(
+    private_key=os.environ["POLYMARKET_PRIVATE_KEY"],
+    wallet=os.environ["POLYMARKET_WALLET_ADDRESS"],
 )
+asset_id = yes.position_id if market.version == "v2" else yes.token_id
+await client.place_limit_order(asset_id=asset_id, side="BUY", price="0.50", size="10")
 ```
+
+### Legacy standalone clients (V1/CTF only — superseded)
+`@polymarket/clob-client` + ethers v5 and `py-clob-client` predate Protocol V2 and cannot sign V2 orders; migrate to the unified SDK (see the official migration guide `docs.polymarket.com/migrate/clob-sdk-to-unified-sdk`).
 
 ## Quick Reference: Order Types
 
@@ -118,56 +120,48 @@ client = ClobClient(
 
 ## Core Pattern: Place an Order
 
-### TypeScript
+### TypeScript (unified SDK)
 ```typescript
-const response = await client.createAndPostOrder(
-  {
-    tokenID: "TOKEN_ID",
-    price: 0.50,
-    size: 10,
-    side: Side.BUY,
-  },
-  {
-    tickSize: "0.01",  // from client.getTickSize(tokenID) or market object
-    negRisk: false,    // from client.getNegRisk(tokenID) or market object
-  },
-  OrderType.GTC
-);
-console.log(response.orderID, response.status);
+const assetId = market.version === "v2" ? outcome.positionId : outcome.tokenId;
+const response = await client.placeLimitOrder({
+  assetId,
+  side: OrderSide.BUY,
+  price: "0.50",
+  size: "10",       // shares
+  // orderType is a limit (GTC) by default; pass expiration (UTC seconds,
+  // ≥3 min ahead) for GTD and postOnly: true to avoid crossing the spread
+});
+if (!response.ok) throw new Error(response.message);
+console.log(response.orderId);
 ```
 
 ### Python
 ```python
-from py_clob_client.clob_types import OrderArgs, OrderType
-from py_clob_client.order_builder.constants import BUY
-
-response = client.create_and_post_order(
-    OrderArgs(token_id="TOKEN_ID", price=0.50, size=10, side=BUY),
-    options={"tick_size": "0.01", "neg_risk": False},
-    order_type=OrderType.GTC,
-)
-print(response["orderID"], response["status"])
+response = await client.place_limit_order(asset_id=asset_id, side="BUY", price="0.50", size="10")
+print(response.order_id)
 ```
+
+V2 fill semantics (ExchangeV3, integer base units): `counterAmount = floor(makerAssetFill × takerAmount / makerAmount)`; GTC/GTD BUY targets **shares**, FOK/FAK BUY targets **collateral**; fees add to a BUY's collateral spend and are deducted from a SELL's proceeds.
 
 ## Core Pattern: Read Orderbook
 
 ### TypeScript
 ```typescript
 // No auth needed
-const readClient = new ClobClient("https://clob.polymarket.com", 137);
-const book = await readClient.getOrderBook("TOKEN_ID");
+const client = createPublicClient();
+const book = await client.fetchOrderBook({ assetId }); // token id or V2 position id
 console.log("Best bid:", book.bids[0], "Best ask:", book.asks[0]);
 
-const mid = await readClient.getMidpoint("TOKEN_ID");
-const spread = await readClient.getSpread("TOKEN_ID");
+const mid = await client.fetchMidpoint({ assetId });
+const spread = await client.fetchSpread({ assetId });
 ```
 
 ### Python
 ```python
-read_client = ClobClient("https://clob.polymarket.com", chain_id=137)
-book = read_client.get_order_book("TOKEN_ID")
-mid = read_client.get_midpoint("TOKEN_ID")
-spread = read_client.get_spread("TOKEN_ID")
+client = PublicClient()
+book = client.fetch_order_book(asset_id=asset_id)
+mid = client.fetch_midpoint(asset_id=asset_id)
+spread = client.fetch_spread(asset_id=asset_id)
 ```
 
 ## Core Pattern: WebSocket Subscribe
@@ -211,10 +205,10 @@ Only read these when the task requires deeper detail on a specific topic:
 
 ## Verification status (this plugin)
 
-Every endpoint in these modules was cross-checked against the official OpenAPI specs and live responses. Notable corrections vs the 2026-03 snapshot:
+Every endpoint in these modules was cross-checked against the official OpenAPI specs, the migration guides (docs.polymarket.com/migrate/) and live responses. Notable corrections vs earlier snapshots:
 
+- **0.3.0 (2026-10)**: Data API migrated to `/v2` (v1 retires 2026-10-24): envelope `{data, pagination}`, cursor-only pagination, snake_case fields, `condition` market filter. Gamma exposes `version`/`positionIds`/`resolutionStatus` for Protocol V2; CLOB `balance-allowance` accepts `CONDITIONAL-V2`. Trading path uses the unified `@polymarket/client` SDK (ExchangeV3, domain version "3"). PolyBolt (`wss://ws-live-v2.polymarket.com/ws`) documented for reference prices; RTDS legacy.
 - Gamma sort fields are camelCase WITHOUT underscores: `volume24hr`, not `volume_24hr` (the old form now returns HTTP 422).
-- Data-API live volume takes `?id=<eventId>` (not `?event=`); `/holders` needs the full 32-byte condition id.
 - Geoblock lives on polymarket.com (`GET https://polymarket.com/api/geoblock`), NOT on data-api.
-- New surfaces since the snapshot: **Perps** (`api.perpetuals.polymarket.com`) and **Combos/RFQ** (`combos-rfq-api.polymarket.com`) — see `perps.md` and `combos-rfq.md`.
-- Full inventory: see `api-endpoints.md`. Rate limiting now also documents per-signer token buckets with `Poly-RateLimit-*` response headers — see `rate-limits.md`.
+- Surfaces covered: **Perps** (`api.perpetuals.polymarket.com`), **Combos/RFQ** (`combos-rfq-api.polymarket.com`), **PolyBolt** reference prices.
+- Full inventory: see `api-endpoints.md`. Rate limiting also documents per-signer token buckets with `Poly-RateLimit-*` response headers — see `rate-limits.md`.

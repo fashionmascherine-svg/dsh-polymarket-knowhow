@@ -50,6 +50,15 @@ The whole `/v1/info/*` group is public — no headers needed.
 ### BLP (`/v1/blp/*`)
 - `POST /enroll`, `GET /enrollment`, `GET /liquidations`
 
+## Recent API changes (2026, from the official perps changelog)
+
+- **2026-09-27**: fills gain `settlement`, `builder_fee`, `total_fee`; rewards endpoint rejects timestamp params (400); new terminal statuses `instrument_close_only`/`instrument_settled`; instruments gain `close_only` and `settlement` fields; position-snapshots endpoint added.
+- **2026-09-14**: 14 history routes now reject `cursor` with 400; leaderboard `account_value` is a cached census value; new 50-level book channel `book::{iid}::50`.
+- **2026-09-08**: new `GET /v1/info/exchange-stats` (public aggregate stats, 31-day window, 5-min cache); `instrument_id` filter on fills.
+- **2026-08-24**: rejections/acks gain `ts`, `arts`, `ref`; WebSocket envelopes gain `ets`; fills gain optional `liquidation_details`, required `adl` flag (2026-08-10).
+- **2026-08-07**: `/v1/info/exchange` adds `engine_version` and documents the `cancel_only` flag.
+- **2026-06-10/09**: 20ms taker delay on immediately matching orders; `reduce_only` field on order submission.
+
 ## Notes for agents
 
 - Perps are a separate product from the prediction-market CLOB: different base URL, different auth headers, different SDK surface. Do not mix CLOB L2 credentials with perps credentials.
