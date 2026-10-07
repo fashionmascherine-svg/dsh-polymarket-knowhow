@@ -192,6 +192,7 @@ const prices = await client.fetchPrices([
 | `questionID` | Hash of UMA ancillary data |
 | `neg_risk` | `true` for multi-outcome events |
 | `minimum_tick_size` | Minimum price increment |
+| `feesEnabled` / `feeType` / `feeSchedule` | Taker-fee parameters on the Gamma market object (e.g. `{rate: 0.05, exponent: 1, takerOnly: true, rebateRate: 0.15}` for `sports_fees_v3`) — apply the formula in fees.md |
 | `enableOrderBook` | Whether orderbook is active |
 | `slug` | URL-friendly identifier |
 | `tokens` | Array of `{ token_id, outcome }` for both outcomes |

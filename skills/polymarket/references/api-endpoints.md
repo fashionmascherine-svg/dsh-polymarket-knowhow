@@ -25,7 +25,7 @@ Core reads:
 - `GET /events` — filters: `active`, `closed`, `archived`, `slug`, `tag_id[]`, `series_id[]`, `order`, `ascending`, `limit` (≤500), `offset`
 - `GET /events/keyset` — cursor pagination: `after_cursor`, `limit` (≤500), `live`, `title_search`, `tag_id[]`, `tag_match`, `series_id[]`, `game_id[]`
 - `GET /events/{id}` · `GET /events/slug/{slug}` · `GET /events/{id}/tags`
-- `GET /markets` — plus filters `condition_ids[]`, `clob_token_ids[]`
+- `GET /markets` — id filters are FLAT repeated keys: `condition_ids=<id>` / `clob_token_ids=<id>` (live-verified 2026-10-07: the bracket `condition_ids[]=` spelling is silently IGNORED — unfiltered rows come back). The server defaults to `closed=false`: pass `closed=true` to include resolved markets (a just-closed market still carries its `feeSchedule`)
 - `GET /markets/keyset` — cursor pagination (`limit` ≤100, `decimalized`, `rfq_enabled`)
 - `GET /markets/{id}` · `GET /markets/slug/{slug}` · `GET /markets/{id}/tags` · `GET /markets/{id}/description`
 - `POST /markets/abridged` and `POST /markets/information` — POST-body filter queries
@@ -85,7 +85,7 @@ Public market data:
 - `GET /markets-by-token/{token_id}` — resolve token → condition/market
 - `GET /clob-markets/{condition_id}` — CLOB-side market info
 - `GET /simplified-markets` · `/sampling-simplified-markets` · `/sampling-markets` (paginated by `next_cursor`)
-- `GET /fee-rate[/{token_id}]` · `GET /rewards/markets/current` · `POST /markets/live-activity` + `GET /markets/live-activity/{condition_id}`
+- `GET /fee-rate[/{token_id}]` → `{"base_fee": 1000}` — a **legacy cap field, NOT the taker fee**; the live taker-fee parameters are the Gamma market's `feesEnabled`/`feeType`/`feeSchedule` (see fees.md) · `GET /rewards/markets/current` · `POST /markets/live-activity` + `GET /markets/live-activity/{condition_id}`
 - `GET /time` — server time
 
 Authenticated (L2 headers):

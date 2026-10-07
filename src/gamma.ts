@@ -177,11 +177,14 @@ export class GammaClient {
     clobTokenIds?: string[]
     limit?: number
     offset?: number
+    /** Omit for the server default (closed=false); pass true to include resolved/closed markets. */
+    closed?: boolean
   }): Promise<GammaMarket[]> {
     return this.request('/markets', {
       query: {
         condition_ids: params.conditionIds,
         clob_token_ids: params.clobTokenIds,
+        closed: params.closed,
         limit: params.limit,
         offset: params.offset,
       },

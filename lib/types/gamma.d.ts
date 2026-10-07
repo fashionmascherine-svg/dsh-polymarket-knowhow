@@ -103,6 +103,8 @@ export declare class GammaClient {
         clobTokenIds?: string[];
         limit?: number;
         offset?: number;
+        /** Omit for the server default (closed=false); pass true to include resolved/closed markets. */
+        closed?: boolean;
     }): Promise<GammaMarket[]>;
     /** Cursor-paginated market listing; supports up to 100 per page. */
     listMarketsKeyset(params?: KeysetParams): Promise<{

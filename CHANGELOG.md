@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows semver.
 
+## [0.3.1] — fee documentation corrected (taker fee formula + live feeSchedule)
+
+### Fixed
+- **The fee knowledge module was stale and understated taker fees** (~⅓ of the real value on sports): the old module documented a 0.0175 sports rate with an `^exponent` term, a 25% maker rebate, "only crypto and sports have fees", 4-decimal rounding and a manual `feeRateBps`-in-the-order REST flow. The official fee model (docs.polymarket.com/trading/fees, cross-checked live on Gamma market objects 2026-10-07) is:
+  - `fee = C × feeRate × p × (1 − p)` (USDC, takers only — makers are never charged; schedules carry `takerOnly: true`);
+  - rates by category: crypto 0.07, sports 0.05, economics/culture/weather/other 0.05, finance/politics/mentions/tech 0.04, geopolitics 0 — e.g. sports, 100 shares at $0.50 → **$1.25** (the old module computed ~$0.22);
+  - live parameters live on the Gamma market object: `feesEnabled` / `feeType` (e.g. `sports_fees_v3`) / `feeSchedule = {rate, exponent, takerOnly, rebateRate}` — read them, never hardcode;
+  - rounding is 5 decimals with a 0.00001 USDC minimum; and fees are applied at match time — orders no longer carry `feeRateBps` (removed with the 2026-04 exchange upgrade), so the manual signing flow was removed from the docs.
+- `CLOB GET /fee-rate/{token}` documented for what it actually returns (`{"base_fee": 1000}`, a legacy cap field — live-verified), instead of implying it yields the taker fee.
+
+### Added
+- `polymarket_token_info` (DSH + MCP) now surfaces the live taker-fee parameters: `fees` (`feesEnabled`/`feeType`/`feeSchedule` resolved from Gamma via the token's condition id) plus `fee_rate_legacy` (the CLOB cap field, clearly labelled) — the tool promised "fee rate" but never returned any fee data before.
+- Unit test pinning the token_info fee surface; knowledge module rewritten against the official fee tables (peak fees per 100 shares: crypto $1.75, sports $1.25, 0.04-categories $1.00).
+
 ## [0.3.0] — Polymarket Protocol V2 & Data API v2
 
 ### Breaking

@@ -196,7 +196,7 @@ Only read these when the task requires deeper detail on a specific topic:
 - **WebSocket** (market/user/sports channels, subscribe, heartbeat): [websocket.md](websocket.md)
 - **CTF operations** (split, merge, redeem, neg risk, token IDs): [ctf-operations.md](ctf-operations.md)
 - **Bridge** (deposits, withdrawals, supported chains/tokens, status): [bridge.md](bridge.md)
-- **Fees** (fee formula, fee tables by market type, SDK auto-handling, REST API manual flow): [fees.md](fees.md)
+- **Fees** (taker fee formula `C × feeRate × p × (1−p)`, per-category rates, Gamma `feeSchedule` live source, SDK auto-handling): [fees.md](fees.md)
 - **Gasless transactions** (relayer client, wallet deployment, builder setup): [gasless.md](gasless.md)
 - **Core concepts** (markets/events, positions/tokens, order lifecycle, resolution, negative risk): [concepts.md](concepts.md)
 - **Error codes** (all CLOB API error codes by endpoint, status code reference): [error-codes.md](error-codes.md)

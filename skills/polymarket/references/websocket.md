@@ -41,7 +41,7 @@ Set `custom_feature_enabled: true` to enable `best_bid_ask`, `new_market`, and `
 |-------|---------|------------|
 | `book` | On subscribe + when trade affects book | `bids[]`, `asks[]`, `hash`, `timestamp` |
 | `price_change` | Order placed or cancelled | `price_changes[]` with `price`, `size`, `side`, `best_bid`, `best_ask` |
-| `last_trade_price` | Trade executed | `price`, `side`, `size`, `fee_rate_bps` |
+| `last_trade_price` | Trade executed | `price`, `side`, `size`, `fee_rate_bps` (legacy field from the pre-2026-04 order struct — the protocol now applies taker fees at match time per the market's `feeSchedule`; see fees.md) |
 | `tick_size_change` | Price hits >0.96 or <0.04 | `old_tick_size`, `new_tick_size` |
 | `best_bid_ask` | Top-of-book changes | `best_bid`, `best_ask`, `spread` |
 | `new_market` | Market created | `question`, `assets_ids`, `outcomes` |

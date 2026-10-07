@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "Polymarket knowhow for Claude Code — skill + read-only market-data MCP server",
-    "version": "0.3.0"
+    "version": "0.3.1"
   },
   "plugins": [
     {
       "name": "polymarket-knowhow",
       "description": "Polymarket prediction-market knowhow skill plus a read-only MCP server with live Gamma/CLOB/Data-API-v2 market data tools",
       "source": "./",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "category": "web3"
     }
   ]

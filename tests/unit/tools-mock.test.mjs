@@ -318,6 +318,57 @@ test('cancel_orders happy paths hit the right wire endpoints per mode', async ()
   assert.equal(routes.filter(Boolean).length >= 1, true)
 })
 
+test('token_info surfaces the live taker-fee schedule and the legacy CLOB cap', async () => {
+  const tools = await collectTools()
+  routes.length = 0
+  routes.push((url) => {
+    if (url.includes('/tick-size')) return { body: { minimum_tick_size: '0.01' } }
+    if (url.includes('/neg-risk')) return { body: { neg_risk: false } }
+    if (url.includes('/markets-by-token')) return { body: { condition_id: '0xCOND', primary_token_id: 'T1' } }
+    if (url.includes('/fee-rate')) return { body: { base_fee: 1000 } }
+    if (url.includes('/markets?') && url.includes('condition_ids')) {
+      return { body: [{ conditionId: '0xCOND', closed: false, feesEnabled: true, feeType: 'sports_fees_v3', feeSchedule: { rate: 0.05, exponent: 1, takerOnly: true, rebateRate: 0.15 } }] }
+    }
+    return undefined
+  })
+  const result = await tools.get('polymarket_token_info').execute({ token_id: 'T1' }, EXEC)
+  assert.deepEqual(result.fees, {
+    feesEnabled: true,
+    feeType: 'sports_fees_v3',
+    feeSchedule: { rate: 0.05, exponent: 1, takerOnly: true, rebateRate: 0.15 },
+    closed: false,
+  }, 'Gamma feeSchedule surfaced as the taker-fee source')
+  assert.deepEqual(result.fee_rate_legacy, { base_fee: 1000 }, 'CLOB /fee-rate exposed as legacy cap, not the taker fee')
+})
+
+test('token_info retries Gamma with closed=true when the market is not open', async () => {
+  const tools = await collectTools()
+  routes.length = 0
+  calls.length = 0
+  routes.push((url) => {
+    if (url.includes('/markets-by-token')) return { body: { condition_id: '0xCLOSED', primary_token_id: 'T9' } }
+    if (url.includes('/fee-rate')) return { body: { base_fee: 1000 } }
+    if (url.includes('/tick-size')) return { body: { minimum_tick_size: '0.001' } }
+    if (url.includes('/neg-risk')) return { body: { neg_risk: false } }
+    if (url.includes('/markets?') && url.includes('condition_ids=0xCLOSED')) {
+      // First attempt (server default closed=false) finds nothing; only the
+      // explicit closed=true retry resolves the just-closed market.
+      if (url.includes('closed=true')) {
+        return { body: [{ conditionId: '0xCLOSED', closed: true, feesEnabled: true, feeType: 'politics_fees', feeSchedule: { rate: 0.04, exponent: 1, takerOnly: true, rebateRate: 0.25 } }] }
+      }
+      return { body: [] }
+    }
+    return undefined
+  })
+  const result = await tools.get('polymarket_token_info').execute({ token_id: 'T9' }, EXEC)
+  assert.equal(result.fees.feeType, 'politics_fees', 'closed-market feeSchedule surfaced via the retry')
+  assert.equal(result.fees.closed, true)
+  const gammaCalls = calls.filter((c) => c.url.includes('condition_ids=0xCLOSED'))
+  assert.equal(gammaCalls.length, 2, 'exactly two Gamma lookups (open, then closed=true)')
+  assert.ok(!gammaCalls[0].url.includes('closed=true'), 'first attempt omits closed (server default)')
+  assert.ok(gammaCalls[1].url.includes('closed=true'), 'retry carries closed=true')
+})
+
 test('tick-size and neg-risk are memoized per token', async () => {
   const tools = await collectTools()
   routes.length = 0
